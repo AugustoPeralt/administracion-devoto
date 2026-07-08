@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -11,7 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test": "tsx --test scripts/**/*.test.ts",
+    "test": "tsx --test scripts/**/*.test.ts lib/**/*.test.ts",
     "parse": "tsx scripts/parse-excel.ts",
     "sharepoint:listar": "tsx scripts/sync-sharepoint.ts --listar",
     "sharepoint:sync": "tsx scripts/sync-sharepoint.ts"
@@ -39,6 +40,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.9",
+    "patch-package": "^8.0.1",
     "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.22.4",
