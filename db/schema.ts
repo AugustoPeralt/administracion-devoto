@@ -21,6 +21,37 @@ export const accionCargaEnum = pgEnum("accion_carga", [
 ]);
 export const estadoDuplicadoEnum = pgEnum("estado_duplicado", ["confirmado", "justificado"]);
 
+// ─── Alquileres ──────────────────────────────────────────────────────────────
+// Prefijo "alq" para separar claramente del dominio de Consolidados (arriba).
+// Mapea 1:1 los dataclasses de contratoAlquileres/src/models.py.
+
+export const alqEstadoContratoEnum = pgEnum("alq_estado_contrato", [
+  "vigente",
+  "historico",
+  "adenda",
+  "pendiente",
+]);
+export const alqPrioridadAlertaEnum = pgEnum("alq_prioridad_alerta", [
+  "critica",
+  "urgente",
+  "proxima",
+  "informativa",
+]);
+export const alqTipoAlertaEnum = pgEnum("alq_tipo_alerta", [
+  "vencimiento_contrato",
+  "decision_prorroga",
+  "pago_pendiente",
+  "pago_vencido",
+  "ajuste_proximo",
+  "ajuste_hoy",
+  "proveedor_no_mapeado",
+]);
+export const alqEstadoSyncEnum = pgEnum("alq_estado_sync", [
+  "en_curso",
+  "completado",
+  "con_errores",
+]);
+
 export const cajas = pgTable(
   "cajas",
   {
@@ -197,3 +228,159 @@ export const duplicadosRevisados = pgTable(
   },
   (t) => [uniqueIndex("duplicados_caso_idx").on(t.cajaId, t.fecha, t.codTitular)]
 );
+
+// ─── Alquileres ──────────────────────────────────────────────────────────────
+
+/** Catálogo de locales reales (restaurantes). Nombre canónico usado como referencia
+ * por contratos, mapeos de proveedor CBC y canon vigente. */
+export const alqLocales = pgTable("alq_locales", {
+  id: serial("id").primaryKey(),
+  nombre: text("nombre").notNull().unique(),
+  creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Mapea models.Contrato del sistema Python. `contratoIdExcel` es el ID tal como
+ * figura en la columna A del Excel maestro (numeración propia de cada hoja/local,
+ * no global) — la clave natural es (local, contratoIdExcel). */
+export const alqContratos = pgTable(
+  "alq_contratos",
+  {
+    id: serial("id").primaryKey(),
+    localId: integer("local_id")
+      .notNull()
+      .references(() => alqLocales.id),
+    contratoIdExcel: integer("contrato_id_excel").notNull(),
+    estado: alqEstadoContratoEnum("estado").notNull(),
+    tipo: text("tipo"),
+    domicilio: text("domicilio"),
+    partes: text("partes"),
+    fechaContrato: date("fecha_contrato"),
+    vencimiento: date("vencimiento"),
+    plazo: text("plazo"),
+    valorMoneda: text("valor_moneda"),
+    actualizacion: text("actualizacion"),
+    prorroga: text("prorroga"),
+    voluntad: text("voluntad"),
+    renegociacion: text("renegociacion"),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+    actualizadoEn: timestamp("actualizado_en", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("alq_contratos_local_id_excel_idx").on(t.localId, t.contratoIdExcel)]
+);
+
+/** Mapea AlquilerMensual. `local` es texto libre (no FK) porque puede ser un
+ * pseudo-local del parser ("_DESCONOCIDO_<proveedor>", "_OFICINA_ADMIN") además
+ * de un nombre de `alqLocales` real — mismo criterio que usa cbc_parser.py. */
+export const alqAlquileresMensuales = pgTable(
+  "alq_alquileres_mensuales",
+  {
+    id: serial("id").primaryKey(),
+    local: text("local").notNull(),
+    proveedorCbc: text("proveedor_cbc").notNull(),
+    mes: text("mes").notNull(),
+    totalFacturado: numeric("total_facturado", { precision: 18, scale: 2 }).notNull(),
+    totalPagado: numeric("total_pagado", { precision: 18, scale: 2 }).notNull(),
+    saldo: numeric("saldo", { precision: 18, scale: 2 }).notNull(),
+    fechaUltimoPago: date("fecha_ultimo_pago"),
+    syncRunId: integer("sync_run_id").references(() => alqSyncRuns.id),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("alq_alquileres_local_mes_idx").on(t.local, t.mes)]
+);
+
+/** Mapea Factura (hijo de AlquilerMensual). */
+export const alqFacturas = pgTable("alq_facturas", {
+  id: serial("id").primaryKey(),
+  alquilerMensualId: integer("alquiler_mensual_id")
+    .notNull()
+    .references(() => alqAlquileresMensuales.id),
+  fecha: date("fecha").notNull(),
+  razonSocial: text("razon_social").notNull(),
+  cuit: text("cuit").notNull(),
+  monto: numeric("monto", { precision: 18, scale: 2 }).notNull(),
+  tipoComprobante: integer("tipo_comprobante").notNull(),
+});
+
+/** Mapea Pago (hijo de AlquilerMensual). */
+export const alqPagos = pgTable("alq_pagos", {
+  id: serial("id").primaryKey(),
+  alquilerMensualId: integer("alquiler_mensual_id")
+    .notNull()
+    .references(() => alqAlquileresMensuales.id),
+  fecha: date("fecha").notNull(),
+  monto: numeric("monto", { precision: 18, scale: 2 }).notNull(),
+  medio: text("medio").notNull(),
+  nroCheque: text("nro_cheque"),
+});
+
+/** Reemplaza el `canon_vigente = {}` hardcodeado en src/main.py — activa las
+ * alertas PAGO_PENDIENTE/PAGO_VENCIDO/AJUSTE_PROXIMO/AJUSTE_HOY. Editable desde
+ * app/alquileres/canon. Shape según alerts.py: dia_pago_desde/hasta, proximo_ajuste,
+ * indice_ajuste, preaviso_prorroga_dias. */
+export const alqCanonVigenteConfig = pgTable("alq_canon_vigente_config", {
+  id: serial("id").primaryKey(),
+  local: text("local").notNull().unique(),
+  diaPagoDesde: integer("dia_pago_desde").notNull().default(1),
+  diaPagoHasta: integer("dia_pago_hasta").notNull().default(10),
+  proximoAjuste: date("proximo_ajuste"),
+  indiceAjuste: text("indice_ajuste"),
+  preavisoProrrogaDias: integer("preaviso_prorroga_dias").notNull().default(30),
+  actualizadoEn: timestamp("actualizado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Snapshot de alertas persistido en cada sincronización — la web solo lee,
+ * nunca recalcula (mismas 7 combinaciones prioridad/tipo que src/alerts.py). */
+export const alqAlertas = pgTable("alq_alertas", {
+  id: serial("id").primaryKey(),
+  syncRunId: integer("sync_run_id")
+    .notNull()
+    .references(() => alqSyncRuns.id),
+  prioridad: alqPrioridadAlertaEnum("prioridad").notNull(),
+  local: text("local").notNull(),
+  tipoAlerta: alqTipoAlertaEnum("tipo_alerta").notNull(),
+  descripcion: text("descripcion").notNull(),
+  fechaEvento: date("fecha_evento"),
+  diasRestantes: integer("dias_restantes"),
+  accionRequerida: text("accion_requerida").notNull(),
+  creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Reemplaza config/locales_mapping.json (proveedor CBC → local canónico).
+ * `localCanonico` es texto libre (no FK a alqLocales) porque el JSON original
+ * admite pseudo-locales como "_OFICINA_ADMIN". Mismo patrón que conceptosEsperados
+ * + su pantalla de reglas. */
+export const alqLocalesMapping = pgTable("alq_locales_mapping", {
+  id: serial("id").primaryKey(),
+  proveedorCbc: text("proveedor_cbc").notNull().unique(),
+  localCanonico: text("local_canonico").notNull(),
+  activo: boolean("activo").notNull().default(true),
+  creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Metadata (no el binario) de la futura carpeta de solo lectura con los contratos
+ * reales. Queda lista pero inactiva hasta que se confirme la ruta de SharePoint. */
+export const alqDocumentos = pgTable("alq_documentos", {
+  id: serial("id").primaryKey(),
+  localId: integer("local_id").references(() => alqLocales.id),
+  nombre: text("nombre").notNull(),
+  webUrl: text("web_url").notNull(),
+  sharepointPath: text("sharepoint_path").notNull(),
+  driveItemId: text("drive_item_id"),
+  tamanioBytes: integer("tamanio_bytes"),
+  modificadoEn: timestamp("modificado_en", { withTimezone: true }),
+  creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Reemplaza el rol de "aviso de errores" que hoy cumple el email semanal
+ * (weekly_scan.yml + email_builder.py): estado de cada sincronización, CBCs
+ * fallidos, etc. */
+export const alqSyncRuns = pgTable("alq_sync_runs", {
+  id: serial("id").primaryKey(),
+  iniciadoEn: timestamp("iniciado_en", { withTimezone: true }).notNull().defaultNow(),
+  finalizadoEn: timestamp("finalizado_en", { withTimezone: true }),
+  estado: alqEstadoSyncEnum("estado").notNull().default("en_curso"),
+  cbcsProcesados: integer("cbcs_procesados").notNull().default(0),
+  cbcsFallidos: integer("cbcs_fallidos").notNull().default(0),
+  erroresJson: text("errores_json"),
+  usuarioEmail: text("usuario_email"),
+});
