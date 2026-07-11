@@ -13,6 +13,11 @@ out/
 # excels reales de origen (contienen datos sensibles de tesorería)
 archivosCopiaDeConsolidados/
 
+# Excel maestro de contratos de Alquileres (datos sensibles) — fuente local
+# temporal hasta tener acceso al SharePoint donde vive el archivo real
+# (ver lib/alquileres/sincronizar-sharepoint.ts).
+archivosAlquileres/
+
 # misc
 .DS_Store
 *.log

@@ -1,0 +1,1 @@
+ALTER TABLE "alq_sync_runs" ADD COLUMN "hashes_json" text;

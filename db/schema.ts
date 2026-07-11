@@ -382,5 +382,9 @@ export const alqSyncRuns = pgTable("alq_sync_runs", {
   cbcsProcesados: integer("cbcs_procesados").notNull().default(0),
   cbcsFallidos: integer("cbcs_fallidos").notNull().default(0),
   erroresJson: text("errores_json"),
+  // Mapa {rutaSharePoint: hashSha256} de los CBC + Excel maestro procesados en
+  // esta corrida — permite saltar el reproceso de archivos sin cambios (lee el
+  // último run al arrancar la sincronización siguiente).
+  hashesJson: text("hashes_json"),
   usuarioEmail: text("usuario_email"),
 });
