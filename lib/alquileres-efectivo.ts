@@ -48,6 +48,30 @@ function diasEntre(a: string, b: string): number {
   return Math.round((new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / 86_400_000);
 }
 
+/**
+ * Una palabra clave normal matchea por substring (ej. "FERRETERIA" matchea "alquiler
+ * mes de junio ferreteria"). Una palabra clave que empieza con "=" exige coincidencia
+ * EXACTA con descripcion_final o concepto_manual — necesario cuando el texto corto es
+ * substring de otro (ej. "ALQUILER TAVLON" es substring de "ALQUILER TAVLON
+ * ferreteria"; sin el modo exacto, matchear por substring le robaría esa fila a
+ * FERRETERIA). Se compara descripcion_final y concepto_manual por separado, no
+ * concatenados, porque en la práctica casi siempre tienen el mismo valor duplicado.
+ */
+function coincideKeyword(keywordCruda: string, descripcion: string, conceptoManual: string | null): boolean {
+  const desc = descripcion.trim().toLowerCase();
+  const conc = (conceptoManual ?? "").trim().toLowerCase();
+
+  if (keywordCruda.startsWith("=")) {
+    const exacto = keywordCruda.slice(1).trim().toLowerCase();
+    if (!exacto) return false;
+    return desc === exacto || conc === exacto;
+  }
+
+  const kw = keywordCruda.trim().toLowerCase();
+  if (!kw) return false;
+  return desc.includes(kw) || conc.includes(kw);
+}
+
 /** Reglas activas (+ catch-all) agrupadas por caja, con matching de keywords ya resuelto. */
 export async function obtenerAlquileresEfectivo(): Promise<{
   alquileres: AlquilerEfectivoInfo[];
@@ -100,7 +124,6 @@ export async function obtenerAlquileresEfectivo(): Promise<{
     const reglasCaja = (reglasPorCaja.get(m.cajaId) ?? []).filter((r) => r.codTitular === m.codTitular);
     if (reglasCaja.length === 0) continue;
 
-    const texto = `${m.descripcionFinal} ${m.conceptoManual ?? ""}`.toLowerCase();
     const pago: PagoAlquilerEfectivo = {
       fecha: m.fecha,
       monto: Math.abs(Number(m.montoArs)),
@@ -109,7 +132,7 @@ export async function obtenerAlquileresEfectivo(): Promise<{
 
     const especificas = reglasCaja.filter((r) => r.palabrasClave.trim() !== "");
     const match = especificas.find((r) =>
-      r.palabrasClave.split(",").some((kw) => kw.trim() && texto.includes(kw.trim().toLowerCase()))
+      r.palabrasClave.split(",").some((kw) => coincideKeyword(kw, m.descripcionFinal, m.conceptoManual))
     );
 
     if (match) {

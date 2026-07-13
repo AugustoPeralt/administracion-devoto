@@ -25,16 +25,20 @@ const DEFINICIONES: { caja: string; nombre: string; palabrasClave: string[] }[] 
   { caja: "MECHA", nombre: "LOCAL", palabrasClave: [] },
   { caja: "TAVLON", nombre: "FERRETERIA", palabrasClave: ["FERRETERIA"] },
   { caja: "TAVLON", nombre: "CANONE", palabrasClave: ["CANONE"] },
-  { caja: "TAVLON", nombre: "JAKIM", palabrasClave: ["JAKIM"] },
-  // Confirmado por el usuario: alquiler real aparte, pagado de forma irregular
-  // (falta en varios meses) y con distintos nombres a lo largo del tiempo — "nuevo
-  // local nr 10" (ene-26) → "MILITAR" (may-26) → "local daniel" (jun-26). $900k→
-  // $980k→$1.070k, consistente con ser el mismo alquiler subiendo, no 3 distintos.
-  { caja: "TAVLON", nombre: "MILITAR", palabrasClave: ["MILITAR", "DANIEL", "NUEVO LOCAL"] },
+  // "=ALQUILER TAVLON"/"=ALQUILER LOCAL" (match EXACTO, confirmado por el usuario):
+  // dos meses (mar-26, jun-26) donde JAKIM se cargó sin su nombre — sin el modo
+  // exacto, "ALQUILER TAVLON" como substring le robaría la fila a FERRETERIA
+  // ("ALQUILER TAVLON ferreteria" también la contiene).
+  { caja: "TAVLON", nombre: "JAKIM", palabrasClave: ["JAKIM", "=ALQUILER TAVLON", "=ALQUILER LOCAL"] },
+  // Confirmado por el usuario: alquiler real aparte que arrancó en mayo-26 (la fila
+  // de enero "nuevo local nr 10" NO es parte de esta serie, es otra cosa). Aparece
+  // con 2 nombres — "MILITAR" (may-26) → "local daniel" (jun-26) — $980k→$1.070k.
+  { caja: "TAVLON", nombre: "MILITAR", palabrasClave: ["MILITAR", "DANIEL"] },
 ];
 
 async function main() {
   let creados = 0;
+  let actualizados = 0;
   for (const def of DEFINICIONES) {
     const [caja] = await db.select().from(cajas).where(eq(cajas.nombre, def.caja)).limit(1);
     if (!caja) {
@@ -42,25 +46,28 @@ async function main() {
       continue;
     }
 
-    const existentes = await db
+    const palabrasClave = def.palabrasClave.join(",");
+    const [existente] = await db
       .select()
       .from(alquileresEfectivo)
       .where(and(eq(alquileresEfectivo.cajaId, caja.id), eq(alquileresEfectivo.nombre, def.nombre)));
 
-    if (existentes.length > 0) {
-      console.log(`  ${def.caja} / ${def.nombre}: ya existe, se omite.`);
+    if (existente) {
+      if (existente.palabrasClave !== palabrasClave) {
+        await db.update(alquileresEfectivo).set({ palabrasClave }).where(eq(alquileresEfectivo.id, existente.id));
+        actualizados++;
+        console.log(`  ${def.caja} / ${def.nombre}: actualizado (palabras: ${def.palabrasClave.join(", ")})`);
+      } else {
+        console.log(`  ${def.caja} / ${def.nombre}: sin cambios.`);
+      }
       continue;
     }
 
-    await db.insert(alquileresEfectivo).values({
-      cajaId: caja.id,
-      nombre: def.nombre,
-      palabrasClave: def.palabrasClave.join(","),
-    });
+    await db.insert(alquileresEfectivo).values({ cajaId: caja.id, nombre: def.nombre, palabrasClave });
     creados++;
     console.log(`  ${def.caja} / ${def.nombre}: creado (palabras: ${def.palabrasClave.join(", ")})`);
   }
-  console.log(`\n${creados} alquiler(es) en efectivo sembrado(s).`);
+  console.log(`\n${creados} creado(s), ${actualizados} actualizado(s).`);
 }
 
 main().catch((e) => {
