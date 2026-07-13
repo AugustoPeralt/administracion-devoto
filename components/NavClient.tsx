@@ -28,7 +28,15 @@ const MODULOS: Record<string, ModuloNav> = {
   },
   alquileres: {
     label: "Alquileres",
-    items: [],
+    items: [
+      { href: "/alquileres", label: "Dashboard" },
+      { href: "/alquileres/pagos", label: "Pagos" },
+      { href: "/alquileres/contratos", label: "Contratos" },
+      { href: "/alquileres/canon", label: "Canon vigente" },
+      { href: "/alquileres/alertas", label: "Alertas" },
+      { href: "/alquileres/mapeos", label: "Mapeos" },
+      { href: "/alquileres/documentos", label: "Documentos" },
+    ],
   },
 };
 

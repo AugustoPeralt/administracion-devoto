@@ -18,7 +18,7 @@ const MODULOS: Modulo[] = [
     href: "/alquileres",
     nombre: "Alquileres",
     descripcion: "Monitoreo de contratos de locación: vencimientos, canon vigente y estado de pagos por local.",
-    disponible: false,
+    disponible: true,
   },
 ];
 

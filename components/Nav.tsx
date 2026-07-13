@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { obtenerAlertasMesActual, obtenerPosiblesDuplicados } from "@/lib/queries";
+import { obtenerAlertasVigentes } from "@/lib/alquileres/consultas";
 import { NavClient } from "./NavClient";
 
 export async function Nav() {
@@ -7,13 +8,18 @@ export async function Nav() {
 
   let contadores: Record<string, number> = {};
   if (session?.user) {
-    const [alertas, duplicados] = await Promise.all([
+    const [alertas, duplicados, alertasAlquileres] = await Promise.all([
       obtenerAlertasMesActual(),
       obtenerPosiblesDuplicados("pendientes"),
+      obtenerAlertasVigentes(),
     ]);
+    const alertasAlquileresGraves = alertasAlquileres.filter(
+      (a) => a.prioridad === "critica" || a.prioridad === "urgente"
+    );
     contadores = {
       "/consolidados/alertas": alertas.length,
       "/consolidados/duplicados": duplicados.length,
+      "/alquileres/alertas": alertasAlquileresGraves.length,
     };
   }
 

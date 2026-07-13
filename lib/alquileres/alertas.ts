@@ -12,6 +12,10 @@ import type { Alerta, AlquilerMensual, CanonVigenteConfig, Contrato } from "./ti
 const DIAS_ALERTA_VENCIMIENTO = [180, 90, 60, 30];
 const DIAS_ALERTA_AJUSTE = 7;
 
+// "Set" (no "Sep"): la abreviatura real que usan los CBC para septiembre — divergencia
+// encontrada contra datos reales de producción (alerts.py/dashboard.py de Python
+// hardcodean "Sep", que nunca matchea el string real "Set-26" de la hoja CtasCtes;
+// no se detectó antes porque el fixture de Fase 2 no incluía ningún mes de setiembre).
 const MES_ES: Record<number, string> = {
   1: "Ene",
   2: "Feb",
@@ -21,7 +25,7 @@ const MES_ES: Record<number, string> = {
   6: "Jun",
   7: "Jul",
   8: "Ago",
-  9: "Sep",
+  9: "Set",
   10: "Oct",
   11: "Nov",
   12: "Dic",
