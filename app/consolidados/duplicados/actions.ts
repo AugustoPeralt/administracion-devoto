@@ -29,7 +29,7 @@ async function resolverCaso(formData: FormData, estado: "confirmado" | "justific
       set: { estado, comentario, usuarioEmail, creadoEn: new Date() },
     });
 
-  revalidatePath("/duplicados");
+  revalidatePath("/consolidados/duplicados");
 }
 
 export async function confirmarDuplicado(formData: FormData) {

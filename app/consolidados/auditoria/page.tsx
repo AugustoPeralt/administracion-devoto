@@ -52,7 +52,7 @@ export default async function AuditoriaPage({
         {PESTANIAS.map((p) => (
           <Link
             key={p.valor}
-            href={`/auditoria?estado=${p.valor}${cajaId ? `&caja=${cajaId}` : ""}`}
+            href={`/consolidados/auditoria?estado=${p.valor}${cajaId ? `&caja=${cajaId}` : ""}`}
             className={`rounded-full border px-3 py-1 text-sm transition-colors ${
               estado === p.valor
                 ? "border-slate-950 bg-slate-950 text-white"
@@ -77,7 +77,7 @@ export default async function AuditoriaPage({
           <div key={a.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/cajas/${a.cajaId}`} className="font-semibold text-slate-950 hover:underline">
+                <Link href={`/consolidados/cajas/${a.cajaId}`} className="font-semibold text-slate-950 hover:underline">
                   {a.cajaNombre}
                 </Link>
                 <span className="text-slate-300">·</span>

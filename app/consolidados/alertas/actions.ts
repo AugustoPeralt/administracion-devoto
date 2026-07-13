@@ -25,8 +25,8 @@ export async function crearConceptoEsperado(formData: FormData) {
     codCuenta: tipoCodigo === "cuenta" ? codigo : null,
   });
 
-  revalidatePath("/alertas");
-  revalidatePath("/alertas/reglas");
+  revalidatePath("/consolidados/alertas");
+  revalidatePath("/consolidados/alertas/reglas");
 }
 
 export async function alternarActivoConcepto(formData: FormData) {
@@ -36,8 +36,8 @@ export async function alternarActivoConcepto(formData: FormData) {
 
   await db.update(conceptosEsperados).set({ activo: !activo }).where(eq(conceptosEsperados.id, id));
 
-  revalidatePath("/alertas");
-  revalidatePath("/alertas/reglas");
+  revalidatePath("/consolidados/alertas");
+  revalidatePath("/consolidados/alertas/reglas");
 }
 
 export async function eliminarConceptoEsperado(formData: FormData) {
@@ -46,6 +46,6 @@ export async function eliminarConceptoEsperado(formData: FormData) {
 
   await db.delete(conceptosEsperados).where(eq(conceptosEsperados.id, id));
 
-  revalidatePath("/alertas");
-  revalidatePath("/alertas/reglas");
+  revalidatePath("/consolidados/alertas");
+  revalidatePath("/consolidados/alertas/reglas");
 }

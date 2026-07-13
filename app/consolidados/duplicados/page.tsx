@@ -47,7 +47,7 @@ export default async function DuplicadosPage({
         {PESTANIAS.map((p) => (
           <Link
             key={p.valor}
-            href={`/duplicados?estado=${p.valor}`}
+            href={`/consolidados/duplicados?estado=${p.valor}`}
             className={`rounded-full border px-3 py-1 text-sm transition-colors ${
               estado === p.valor
                 ? "border-slate-950 bg-slate-950 text-white"
@@ -70,7 +70,7 @@ export default async function DuplicadosPage({
           <div key={`${caso.cajaId}-${caso.fecha}-${caso.codTitular}`} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/cajas/${caso.cajaId}?dia=${caso.fecha}`} className="font-semibold text-slate-950 hover:underline">
+                <Link href={`/consolidados/cajas/${caso.cajaId}?dia=${caso.fecha}`} className="font-semibold text-slate-950 hover:underline">
                   {caso.cajaNombre}
                 </Link>
                 <span className="text-slate-300">·</span>

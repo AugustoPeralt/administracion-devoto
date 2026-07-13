@@ -25,6 +25,6 @@ export async function justificarMovimiento(formData: FormData) {
     comentario,
   });
 
-  revalidatePath("/auditoria");
-  revalidatePath("/");
+  revalidatePath("/consolidados/auditoria");
+  revalidatePath("/consolidados");
 }

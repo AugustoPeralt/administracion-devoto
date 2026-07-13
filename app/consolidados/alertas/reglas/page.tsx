@@ -9,7 +9,7 @@ export default async function ReglasAlertasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/alertas" className="text-sm text-slate-500 hover:text-slate-900">
+        <Link href="/consolidados/alertas" className="text-sm text-slate-500 hover:text-slate-900">
           ← Volver a Alertas
         </Link>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
@@ -18,7 +18,7 @@ export default async function ReglasAlertasPage() {
         <p className="max-w-3xl text-sm text-slate-500">
           Por cada caja, definí qué código de titular o de cuenta identifica un pago que se espera todos los
           meses (ej. alquiler, sueldos). El sistema compara ese código contra los movimientos cargados en el mes
-          actual — si no aparece ninguno con ese código, avisa en <Link href="/alertas" className="underline">Alertas</Link>.
+          actual — si no aparece ninguno con ese código, avisa en <Link href="/consolidados/alertas" className="underline">Alertas</Link>.
         </p>
       </div>
 

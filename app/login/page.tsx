@@ -8,7 +8,7 @@ export default async function LoginPage() {
 
   return (
     <div className="mx-auto mt-24 max-w-sm rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
-      <h1 className="mb-2 text-xl font-semibold tracking-tight text-slate-950">Auditoría Consolidados</h1>
+      <h1 className="mb-2 text-xl font-semibold tracking-tight text-slate-950">AdministracionDevoto</h1>
       <p className="mb-6 text-sm text-slate-500">Acceso restringido. Iniciá sesión con tu cuenta Microsoft.</p>
       <form action={iniciarSesionMicrosoft}>
         <button

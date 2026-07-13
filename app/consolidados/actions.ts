@@ -5,5 +5,5 @@ import { sincronizarDesdeSharePoint } from "@/lib/sincronizar-sharepoint";
 
 export async function actualizarDesdeSharePoint() {
   await sincronizarDesdeSharePoint();
-  revalidatePath("/", "layout");
+  revalidatePath("/consolidados", "layout");
 }

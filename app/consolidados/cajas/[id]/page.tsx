@@ -53,7 +53,7 @@ export default async function CajaPage({
 
       <div className="flex flex-wrap items-center gap-2">
         <Link
-          href={conOrden(`/cajas/${cajaId}`)}
+          href={conOrden(`/consolidados/cajas/${cajaId}`)}
           className={`rounded-full border px-3 py-1 text-sm transition-colors ${
             !dia && !dias
               ? "border-slate-950 bg-slate-950 text-white"
@@ -65,7 +65,7 @@ export default async function CajaPage({
         {PRESETS_DIAS.map((p) => (
           <Link
             key={p.dias}
-            href={conOrden(`/cajas/${cajaId}?dias=${p.dias}`)}
+            href={conOrden(`/consolidados/cajas/${cajaId}?dias=${p.dias}`)}
             className={`rounded-full border px-3 py-1 text-sm transition-colors ${
               !dia && dias === p.dias
                 ? "border-slate-950 bg-slate-950 text-white"
@@ -104,7 +104,7 @@ export default async function CajaPage({
           {orden === "desc" ? "Mostrando las más recientes primero." : "Mostrando las más antiguas primero."}
         </p>
         <Link
-          href={`/cajas/${cajaId}?orden=${orden === "desc" ? "asc" : "desc"}${dia ? `&dia=${dia}` : ""}${
+          href={`/consolidados/cajas/${cajaId}?orden=${orden === "desc" ? "asc" : "desc"}${dia ? `&dia=${dia}` : ""}${
             !dia && dias ? `&dias=${dias}` : ""
           }`}
           className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"

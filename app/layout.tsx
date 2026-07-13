@@ -5,8 +5,8 @@ import { Nav } from "@/components/Nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Auditoría Consolidados",
-  description: "Visor y auditor de tesorería",
+  title: "AdministracionDevoto",
+  description: "Consolidados y Alquileres",
 };
 
 export default function RootLayout({

@@ -38,7 +38,7 @@ export default async function AnomaliasPage() {
               {anomalias.map((a) => (
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="px-3 py-2">
-                    <Link href={`/cajas/${a.cajaId}`} className="font-medium text-slate-950 hover:underline">
+                    <Link href={`/consolidados/cajas/${a.cajaId}`} className="font-medium text-slate-950 hover:underline">
                       {a.cajaNombre}
                     </Link>
                   </td>

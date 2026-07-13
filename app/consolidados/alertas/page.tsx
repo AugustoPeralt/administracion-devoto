@@ -24,7 +24,7 @@ export default async function AlertasPage() {
           </p>
         </div>
         <Link
-          href="/alertas/reglas"
+          href="/consolidados/alertas/reglas"
           className="whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"
         >
           Configurar reglas
@@ -40,7 +40,7 @@ export default async function AlertasPage() {
           {[...porCaja.entries()].map(([cajaNombre, items]) => (
             <div key={cajaNombre} className="rounded-lg border border-rose-200 bg-white p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
-                <Link href={`/cajas/${items[0].cajaId}`} className="font-semibold text-slate-950 hover:underline">
+                <Link href={`/consolidados/cajas/${items[0].cajaId}`} className="font-semibold text-slate-950 hover:underline">
                   {cajaNombre}
                 </Link>
                 <Badge color="rojo">{items.length} sin cargar</Badge>

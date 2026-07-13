@@ -40,7 +40,7 @@ export default async function ErroresExcelPage() {
               return (
                 <tr key={c.cajaId} className={`border-t border-slate-100 ${conDiferencia ? "bg-rose-50/60" : ""}`}>
                   <td className="px-3 py-2">
-                    <Link href={`/cajas/${c.cajaId}`} className="font-medium text-slate-950 hover:underline">
+                    <Link href={`/consolidados/cajas/${c.cajaId}`} className="font-medium text-slate-950 hover:underline">
                       {c.cajaNombre}
                     </Link>
                   </td>
