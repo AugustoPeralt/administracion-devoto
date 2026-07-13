@@ -207,6 +207,34 @@ export const conceptosEsperados = pgTable("conceptos_esperados", {
 });
 
 /**
+ * Excepción al criterio de conceptosEsperados (que evita matchear por texto a
+ * propósito): los alquileres pagados en efectivo comparten TODOS el mismo
+ * cod_titular=3 ("ALQUILER LOCAL"/"Sin Titular 3" en el catálogo, genérico) — una
+ * misma caja puede tener varios alquileres reales distintos bajo ese único código
+ * (ej. TAVLON: Ferretería/Canone/Jakim), así que el código solo no alcanza para
+ * separarlos. Acá sí se matchea por texto libre (palabrasClave, separadas por
+ * coma, case-insensitive, contra descripcion_final/concepto_manual) porque no hay
+ * otra forma de distinguirlos. Un movimiento cod=3 que no matchea ninguna palabra
+ * clave activa se muestra igual como "sin clasificar" — nunca se pierde en
+ * silencio por un keyword mal tipeado.
+ */
+export const alquileresEfectivo = pgTable(
+  "alquileres_efectivo",
+  {
+    id: serial("id").primaryKey(),
+    cajaId: integer("caja_id")
+      .notNull()
+      .references(() => cajas.id),
+    nombre: text("nombre").notNull(),
+    codTitular: integer("cod_titular").notNull().default(3),
+    palabrasClave: text("palabras_clave").notNull(),
+    activo: boolean("activo").notNull().default(true),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("alquileres_efectivo_caja_nombre_idx").on(t.cajaId, t.nombre)]
+);
+
+/**
  * Resolución de un caso de "posible duplicado" (mismo concepto, misma caja, misma
  * fecha, cargado más de una vez en filas separadas de la hoja — ver detección en
  * obtenerPosiblesDuplicados). Se identifica por (caja, fecha, código de titular),

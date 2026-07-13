@@ -50,6 +50,13 @@
       "when": 1783792413609,
       "tag": "0006_material_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783952474444,
+      "tag": "0007_slippery_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

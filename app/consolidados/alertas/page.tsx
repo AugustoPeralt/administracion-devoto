@@ -23,12 +23,20 @@ export default async function AlertasPage() {
             que revisarla.
           </p>
         </div>
-        <Link
-          href="/consolidados/alertas/reglas"
-          className="whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-        >
-          Configurar reglas
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/consolidados/alertas/efectivo"
+            className="whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          >
+            Alquileres en efectivo
+          </Link>
+          <Link
+            href="/consolidados/alertas/reglas"
+            className="whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          >
+            Configurar reglas
+          </Link>
+        </div>
       </div>
 
       {alertas.length === 0 ? (
