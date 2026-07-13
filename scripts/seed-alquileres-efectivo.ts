@@ -26,6 +26,11 @@ const DEFINICIONES: { caja: string; nombre: string; palabrasClave: string[] }[] 
   { caja: "TAVLON", nombre: "FERRETERIA", palabrasClave: ["FERRETERIA"] },
   { caja: "TAVLON", nombre: "CANONE", palabrasClave: ["CANONE"] },
   { caja: "TAVLON", nombre: "JAKIM", palabrasClave: ["JAKIM"] },
+  // Confirmado por el usuario: alquiler real aparte, pagado de forma irregular
+  // (falta en varios meses) y con distintos nombres a lo largo del tiempo — "nuevo
+  // local nr 10" (ene-26) → "MILITAR" (may-26) → "local daniel" (jun-26). $900k→
+  // $980k→$1.070k, consistente con ser el mismo alquiler subiendo, no 3 distintos.
+  { caja: "TAVLON", nombre: "MILITAR", palabrasClave: ["MILITAR", "DANIEL", "NUEVO LOCAL"] },
 ];
 
 async function main() {
