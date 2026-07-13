@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { sql as drizzleSql } from "drizzle-orm";
+import { sql as drizzleSql, and, eq, inArray, notInArray } from "drizzle-orm";
 import { leerTitulares, leerPlanCuentas, type TitularRow, type CuentaRow } from "./parsers/catalogos";
 import { parsearCajaOperativa } from "./parsers/cajas-operativas";
 import { parsearCajaObra } from "./parsers/cajas-obra";
@@ -158,6 +158,7 @@ export async function importarADB(
     movimientosCaja,
     registroAuditoria,
     consistenciaSaldos,
+    justificacionesAuditoria,
   } = await import("../db/schema");
 
   console.log("\nImportando a Neon...");
@@ -272,6 +273,36 @@ export async function importarADB(
         });
     }
     totalMovs += filas.length;
+
+    // Filas "huérfanas": cuando se inserta/borra una fila en el Excel original, las
+    // filas de abajo se corren de posición. El upsert de arriba (clave natural
+    // archivo+caja+fila_excel) actualiza correctamente las filas que sí tienen
+    // contenido en la posición actual, pero nunca borra una fila que quedó en la
+    // base de una sincronización anterior y ya no corresponde a ninguna fila real
+    // del Excel de hoy — se queda para siempre con su contenido viejo, apareciendo
+    // como un "duplicado" del movimiento real que se corrió de lugar. Se borran acá
+    // (con sus justificaciones, si tenía) para que cada sincronización refleje
+    // exactamente el estado actual del Excel, no un acumulado de restos viejos.
+    const filaExcelActuales = filas.map((f) => f.filaExcel);
+    if (filaExcelActuales.length > 0) {
+      const huerfanos = await db
+        .select({ id: movimientosCaja.id })
+        .from(movimientosCaja)
+        .where(
+          and(
+            eq(movimientosCaja.archivoOrigen, archivoOrigen),
+            eq(movimientosCaja.cajaId, cajaId),
+            notInArray(movimientosCaja.filaExcel, filaExcelActuales)
+          )
+        );
+
+      if (huerfanos.length > 0) {
+        const idsHuerfanos = huerfanos.map((h) => h.id);
+        await db.delete(justificacionesAuditoria).where(inArray(justificacionesAuditoria.movimientoId, idsHuerfanos));
+        await db.delete(movimientosCaja).where(inArray(movimientosCaja.id, idsHuerfanos));
+        console.log(`  [${archivoOrigen}] ${nombre}: ${huerfanos.length} fila(s) huérfana(s) eliminada(s)`);
+      }
+    }
 
     const saldoCalculadoArs = resultado.movimientos.at(-1)?.saldoAcumuladoArs ?? resultado.saldoInicialArs;
     const saldoCalculadoUsd = resultado.movimientos.at(-1)?.saldoAcumuladoUsd ?? resultado.saldoInicialUsd;
