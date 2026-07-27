@@ -6,6 +6,19 @@ const emailsPermitidos = (process.env.ALLOWED_EMAILS ?? "")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
+// Encargados de restaurantes: solo cargan facturas en Control de Precios, sin
+// acceso a Consolidados (tesorería) ni a nada más. Deben estar TAMBIÉN en
+// ALLOWED_EMAILS (esta lista no reemplaza el chequeo de login, solo acota qué
+// pueden ver una vez adentro) — el bloqueo real de rutas pasa en middleware.ts.
+const emailsSoloControlPrecios = (process.env.EMAILS_SOLO_CONTROL_PRECIOS ?? "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+export function esEmailRestringidoAControlPrecios(email: string | null | undefined): boolean {
+  return !!email && emailsSoloControlPrecios.includes(email.toLowerCase());
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     MicrosoftEntraID({
