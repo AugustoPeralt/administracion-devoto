@@ -3,7 +3,11 @@
  * locales — mismo camino que el formulario de /control-precios/comparacion,
  * pero para correr desde la terminal (ej. carga inicial, o reimportar sin
  * pasar por el navegador). Reimportar el mismo proveedor reemplaza su lista
- * vigente (upsert por código, se borran los códigos que ya no vienen).
+ * vigente (upsert por código, se borran los códigos que ya no vienen) — pero
+ * además cada import queda guardado aparte, sin pisarse, en
+ * cp_listas_precios_importaciones/historial, para poder comparar la lista
+ * anterior contra la nueva del mismo proveedor (ver
+ * obtenerDeltaListaMismoProveedor() en lib/control-precios/consultas.ts).
  *
  * Uso:
  *   npx tsx scripts/importar-listas-precios.ts criollo "NUEVA COPIA 12 20-7.xls"
@@ -13,7 +17,12 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 
 import { db } from "../db";
-import { cpListasPreciosProveedor, cpProductos } from "../db/schema";
+import {
+  cpListasPreciosHistorial,
+  cpListasPreciosImportaciones,
+  cpListasPreciosProveedor,
+  cpProductos,
+} from "../db/schema";
 import { NOMBRE_PROVEEDOR_EL_CRIOLLO } from "../lib/control-precios/constantes";
 import { NOMBRE_PROVEEDOR_EL_EMPORIO, buscarProveedorIdPorNombre } from "../lib/control-precios/consultas";
 import { normalizarNombreProducto } from "../lib/control-precios/normalizar";
@@ -71,6 +80,22 @@ async function importarLista(proveedorId: number, archivoOrigen: string, filas: 
         notInArray(cpListasPreciosProveedor.codigoProveedor, codigosNuevos)
       )
     );
+
+  const [importacion] = await db
+    .insert(cpListasPreciosImportaciones)
+    .values({ proveedorId, archivoOrigen })
+    .returning({ id: cpListasPreciosImportaciones.id });
+  await db.insert(cpListasPreciosHistorial).values(
+    filas.map((fila) => ({
+      importacionId: importacion.id,
+      codigoProveedor: fila.codigoProveedor,
+      descripcion: fila.descripcion,
+      categoria: fila.categoria,
+      precioLista: fila.precioLista.toFixed(2),
+      precioConBonificacion: fila.precioConBonificacion !== null ? fila.precioConBonificacion.toFixed(2) : null,
+      productoId: idPorNombre.get(normalizarNombreProducto(fila.descripcion)) ?? null,
+    }))
+  );
 
   return { filasImportadas: filas.length, vinculados };
 }

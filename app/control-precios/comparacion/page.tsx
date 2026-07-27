@@ -1,20 +1,36 @@
 import { EmparejarPreciosPanel } from "@/components/EmparejarPreciosPanel";
 import { ImportarListaPrecioForm } from "@/components/ImportarListaPrecioForm";
+import { SeccionColapsable } from "@/components/SeccionColapsable";
 import { SugerenciasPendientesPanel } from "@/components/SugerenciasPendientesPanel";
 import { TablaComparacionProveedores } from "@/components/TablaComparacionProveedores";
-import { DESCUENTO_LISTA_EL_CRIOLLO } from "@/lib/control-precios/constantes";
+import { TablaDeltaListaMismoProveedor } from "@/components/TablaDeltaListaMismoProveedor";
 import {
+  DESCUENTO_LISTA_EL_CRIOLLO,
+  NOMBRE_PROVEEDOR_EL_CRIOLLO,
+  UMBRAL_ALERTA_PRECIO,
+} from "@/lib/control-precios/constantes";
+import {
+  buscarProveedorIdPorNombre,
+  NOMBRE_PROVEEDOR_EL_EMPORIO,
   obtenerComparacionCriolloEmporio,
+  obtenerDeltaListaMismoProveedor,
   obtenerListasParaEmparejar,
   obtenerSugerenciasPendientes,
 } from "@/lib/control-precios/consultas";
 import { importarListaElCriollo, importarListaElEmporio } from "./actions";
 
 export default async function ComparacionProveedoresPage() {
-  const [{ criollo, emporio }, comparacion, sugerencias] = await Promise.all([
+  const [criolloId, emporioId] = await Promise.all([
+    buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_CRIOLLO),
+    buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_EMPORIO),
+  ]);
+
+  const [{ criollo, emporio }, comparacion, sugerencias, deltaCriollo, deltaEmporio] = await Promise.all([
     obtenerListasParaEmparejar(),
     obtenerComparacionCriolloEmporio(),
     obtenerSugerenciasPendientes(),
+    obtenerDeltaListaMismoProveedor(criolloId, NOMBRE_PROVEEDOR_EL_CRIOLLO),
+    obtenerDeltaListaMismoProveedor(emporioId, NOMBRE_PROVEEDOR_EL_EMPORIO),
   ]);
 
   return (
@@ -69,10 +85,25 @@ export default async function ComparacionProveedoresPage() {
         </div>
       )}
 
-      <div>
-        <h2 className="mb-2 text-lg font-semibold tracking-tight text-slate-950">Comparación de precios</h2>
+      <SeccionColapsable titulo="Comparación de precios — El Criollo ↔ El Emporio">
         <TablaComparacionProveedores filas={comparacion} />
-      </div>
+      </SeccionColapsable>
+
+      <SeccionColapsable titulo="Variación de lista — El Criollo (última importación vs. anterior)" defaultAbierta={false}>
+        <p className="mb-2 max-w-3xl text-sm text-slate-500">
+          Solo productos vinculados a nuestro catálogo (los que ya compramos) — no se muestran renglones del
+          catálogo de El Criollo que no nos interesan. Ambos precios ya tienen descontado el{" "}
+          {DESCUENTO_LISTA_EL_CRIOLLO}% combinado de lista.
+        </p>
+        <TablaDeltaListaMismoProveedor filas={deltaCriollo} umbralAlerta={UMBRAL_ALERTA_PRECIO} />
+      </SeccionColapsable>
+
+      <SeccionColapsable titulo="Variación de lista — El Emporio (última importación vs. anterior)" defaultAbierta={false}>
+        <p className="mb-2 max-w-3xl text-sm text-slate-500">
+          Solo productos vinculados a nuestro catálogo (los que ya compramos) — precio con bonificación de lista.
+        </p>
+        <TablaDeltaListaMismoProveedor filas={deltaEmporio} umbralAlerta={UMBRAL_ALERTA_PRECIO} />
+      </SeccionColapsable>
     </div>
   );
 }

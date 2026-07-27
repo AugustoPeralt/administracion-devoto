@@ -47,6 +47,20 @@ duplicar esa documentación acá, solo las reglas que cruzan varios archivos.
   entre catálogos de proveedores distintos (0 coincidencias exactas entre El
   Criollo y El Emporio, confirmado con datos reales) — la fusión o el par
   siempre lo confirma una persona.
+- **Historial de listas de precios (`cp_listas_precios_importaciones`/`historial`)**:
+  `cp_listas_precios_proveedor` sigue siendo "estado vigente" (se pisa en cada
+  import, upsert por código). Desde 2026-07-27, cada import ADEMÁS graba un
+  snapshot append-only aparte (nunca se borra) para poder comparar la lista
+  de un proveedor en dos fechas distintas — ver `obtenerDeltaListaMismoProveedor()`
+  en `consultas.ts`, que compara la última importación contra la anterior por
+  `codigoProveedor` (estable entre versiones de la lista de un mismo
+  proveedor, a diferencia del nombre). Filtra a `productoId IS NOT NULL`
+  (decisión del usuario: solo productos ya vinculados a nuestro catálogo,
+  o sea que la empresa realmente compra — no cualquier renglón del catálogo
+  del proveedor). Si se toca `importarLista()` (en `app/control-precios/comparacion/actions.ts`
+  y en `scripts/importar-listas-precios.ts`, que deben mantenerse en paralelo),
+  no olvidar grabar también el snapshot histórico, o el próximo delta va a
+  salir vacío.
 - **La IA de extracción (`procesarComprobante`/`reanalizarFacturaInterno`,
   Gemini) se equivoca en dígitos de fotos de mala calidad** — sobre todo años
   y días de fecha. Ver `obtenerFacturasConFechaSospechosa()` (detecta facturas

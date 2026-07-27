@@ -1004,3 +1004,115 @@ export async function obtenerSugerenciasPendientes(): Promise<FilaSugerenciaPar[
   return filas.map((r) => ({ ...calcularComparacion(r), motivo: r.motivo }));
 }
 
+export type FilaDeltaListaProveedor = {
+  codigoProveedor: string;
+  descripcion: string;
+  categoria: string | null;
+  precioAnterior: number;
+  fechaAnterior: string;
+  archivoAnterior: string;
+  precioNuevo: number;
+  fechaNueva: string;
+  archivoNuevo: string;
+  porcentajeVariacion: number;
+};
+
+type FilaDeltaListaCruda = {
+  codigoProveedor: string;
+  descripcion: string;
+  categoria: string | null;
+  precioListaAnterior: string;
+  precioBonifAnterior: string | null;
+  fechaAnterior: string;
+  archivoAnterior: string;
+  precioListaNuevo: string;
+  precioBonifNuevo: string | null;
+  fechaNueva: string;
+  archivoNuevo: string;
+};
+
+/**
+ * Compara la última importación de la lista de precios de UN proveedor contra
+ * la anterior, código por código (el código de proveedor es estable entre
+ * importaciones del mismo proveedor, a diferencia del nombre) — a diferencia
+ * de obtenerComparacionCriolloEmporio(), que cruza dos proveedores distintos
+ * en un mismo momento, esto es la MISMA lista en dos fechas (ver
+ * cp_listas_precios_importaciones/historial en db/schema.ts).
+ *
+ * Filtra a solo productos vinculados a nuestro propio catálogo (producto_id
+ * no nulo en la importación nueva) para enfocarse en productos reales que la
+ * empresa compra, no en cualquier renglón del catálogo del proveedor sin
+ * interés (decisión del usuario, 2026-07-27).
+ *
+ * Si el proveedor tiene el ajuste 10%+6% (El Criollo/HORECA), se le resta el
+ * DESCUENTO_LISTA_EL_CRIOLLO combinado a AMBOS precios de lista antes de
+ * comparar (mismo criterio que la rama "estimado" de calcularComparacion) —
+ * aplicarlo a los dos por igual no cambia el % de variación, pero sí el
+ * precio absoluto que se muestra, que tiene que ser el real, no el de lista
+ * sin descontar.
+ *
+ * Devuelve [] si el proveedor todavía no tiene dos importaciones para
+ * comparar (solo se cargó una vez, o ninguna).
+ *
+ * Devuelve también el `archivoOrigen` de cada lado (no solo `importadoEn`):
+ * el archivo puede cargarse varios días después de la fecha que tiene en su
+ * propio nombre (ej. "20-7" subido recién el 23/7) — mostrar solo la fecha de
+ * carga es engañoso, el nombre de archivo es lo que realmente identifica qué
+ * versión de la lista se está comparando.
+ */
+export async function obtenerDeltaListaMismoProveedor(
+  proveedorId: number,
+  proveedorNombre: string
+): Promise<FilaDeltaListaProveedor[]> {
+  const resultado = await db.execute(sql`
+    WITH importaciones AS (
+      SELECT id, importado_en, archivo_origen, ROW_NUMBER() OVER (ORDER BY importado_en DESC) AS rn
+      FROM cp_listas_precios_importaciones
+      WHERE proveedor_id = ${proveedorId}
+    ),
+    nueva AS (SELECT id, importado_en, archivo_origen FROM importaciones WHERE rn = 1),
+    anterior AS (SELECT id, importado_en, archivo_origen FROM importaciones WHERE rn = 2)
+    SELECT
+      hn.codigo_proveedor AS "codigoProveedor",
+      hn.descripcion AS "descripcion",
+      hn.categoria AS "categoria",
+      ha.precio_lista AS "precioListaAnterior", ha.precio_con_bonificacion AS "precioBonifAnterior",
+      an.importado_en AS "fechaAnterior", an.archivo_origen AS "archivoAnterior",
+      hn.precio_lista AS "precioListaNuevo", hn.precio_con_bonificacion AS "precioBonifNuevo",
+      nv.importado_en AS "fechaNueva", nv.archivo_origen AS "archivoNuevo"
+    FROM nueva nv
+    CROSS JOIN anterior an
+    JOIN cp_listas_precios_historial hn ON hn.importacion_id = nv.id
+    JOIN cp_listas_precios_historial ha ON ha.importacion_id = an.id AND ha.codigo_proveedor = hn.codigo_proveedor
+    WHERE hn.producto_id IS NOT NULL
+    ORDER BY hn.categoria NULLS LAST, hn.descripcion
+  `);
+
+  const aplicaAjuste = PROVEEDORES_CON_AJUSTE_10_6.includes(proveedorNombre);
+  const precioAjustado = (precioLista: string, precioBonif: string | null) =>
+    aplicaAjuste
+      ? Number(precioLista) * (1 - DESCUENTO_LISTA_EL_CRIOLLO / 100)
+      : Number(precioBonif ?? precioLista);
+
+  return (resultado.rows as FilaDeltaListaCruda[])
+    .map((f) => {
+      const precioAnterior = precioAjustado(f.precioListaAnterior, f.precioBonifAnterior);
+      const precioNuevo = precioAjustado(f.precioListaNuevo, f.precioBonifNuevo);
+      const porcentajeVariacion =
+        precioAnterior > 0 ? Math.round(((precioNuevo - precioAnterior) / precioAnterior) * 10000) / 100 : 0;
+      return {
+        codigoProveedor: f.codigoProveedor,
+        descripcion: f.descripcion,
+        categoria: f.categoria,
+        precioAnterior,
+        fechaAnterior: f.fechaAnterior,
+        archivoAnterior: f.archivoAnterior,
+        precioNuevo,
+        fechaNueva: f.fechaNueva,
+        archivoNuevo: f.archivoNuevo,
+        porcentajeVariacion,
+      };
+    })
+    .sort((a, b) => b.porcentajeVariacion - a.porcentajeVariacion);
+}
+

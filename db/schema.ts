@@ -645,6 +645,44 @@ export const cpListasPreciosProveedor = pgTable(
 );
 
 /**
+ * Un registro por cada vez que se importa un archivo de lista de precios de un
+ * proveedor — a diferencia de cp_listas_precios_proveedor (que se pisa en cada
+ * import), esto es append-only: existe justo para poder comparar "la lista de
+ * este proveedor de hace dos semanas" contra "la de ahora" (ver
+ * obtenerDeltaListaMismoProveedor() en consultas.ts). Cada fila de
+ * cp_listas_precios_historial cuelga de una importación puntual acá.
+ */
+export const cpListasPreciosImportaciones = pgTable("cp_listas_precios_importaciones", {
+  id: serial("id").primaryKey(),
+  proveedorId: integer("proveedor_id")
+    .notNull()
+    .references(() => cpProveedores.id, { onDelete: "cascade" }),
+  archivoOrigen: text("archivo_origen").notNull(),
+  importadoEn: timestamp("importado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Snapshot inmutable de cada renglón de una importación de lista de precios —
+ * ver cp_listas_precios_importaciones. `productoId` solo se completa cuando en
+ * el momento de ESA importación el nombre normalizado matcheaba exacto contra
+ * nuestro catálogo (mismo criterio que cp_listas_precios_proveedor.producto_id):
+ * es el filtro que separa "producto real que la empresa compra" de un renglón
+ * más del catálogo del proveedor que no nos interesa.
+ */
+export const cpListasPreciosHistorial = pgTable("cp_listas_precios_historial", {
+  id: serial("id").primaryKey(),
+  importacionId: integer("importacion_id")
+    .notNull()
+    .references(() => cpListasPreciosImportaciones.id, { onDelete: "cascade" }),
+  codigoProveedor: text("codigo_proveedor").notNull(),
+  descripcion: text("descripcion").notNull(),
+  categoria: text("categoria"),
+  precioLista: numeric("precio_lista", { precision: 18, scale: 2 }).notNull(),
+  precioConBonificacion: numeric("precio_con_bonificacion", { precision: 18, scale: 2 }),
+  productoId: integer("producto_id").references(() => cpProductos.id),
+});
+
+/**
  * Par entre "este renglón de la lista de un proveedor" y "este renglón de la
  * lista de otro proveedor" — hace falta porque los nombres no coinciden entre
  * catálogos de proveedores distintos (comprobado: 0 coincidencias exactas

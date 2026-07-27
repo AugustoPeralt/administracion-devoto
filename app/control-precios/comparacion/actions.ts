@@ -2,7 +2,13 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { cpListasPreciosProveedor, cpParesPreciosProveedores, cpProductos } from "@/db/schema";
+import {
+  cpListasPreciosHistorial,
+  cpListasPreciosImportaciones,
+  cpListasPreciosProveedor,
+  cpParesPreciosProveedores,
+  cpProductos,
+} from "@/db/schema";
 import { NOMBRE_PROVEEDOR_EL_CRIOLLO } from "@/lib/control-precios/constantes";
 import {
   buscarProveedorIdPorNombre,
@@ -82,6 +88,25 @@ async function importarLista(proveedorId: number, archivoOrigen: string, filas: 
         notInArray(cpListasPreciosProveedor.codigoProveedor, codigosNuevos)
       )
     );
+
+  // Snapshot append-only de esta importación puntual (no se pisa nunca) — ver
+  // obtenerDeltaListaMismoProveedor(), que compara esta importación contra la
+  // anterior del mismo proveedor para detectar aumentos de lista a lista.
+  const [importacion] = await db
+    .insert(cpListasPreciosImportaciones)
+    .values({ proveedorId, archivoOrigen })
+    .returning({ id: cpListasPreciosImportaciones.id });
+  await db.insert(cpListasPreciosHistorial).values(
+    filas.map((fila) => ({
+      importacionId: importacion.id,
+      codigoProveedor: fila.codigoProveedor,
+      descripcion: fila.descripcion,
+      categoria: fila.categoria,
+      precioLista: fila.precioLista.toFixed(2),
+      precioConBonificacion: fila.precioConBonificacion !== null ? fila.precioConBonificacion.toFixed(2) : null,
+      productoId: idPorNombre.get(normalizarNombreProducto(fila.descripcion)) ?? null,
+    }))
+  );
 
   revalidatePath("/control-precios/comparacion");
   return { archivo: archivoOrigen, filasImportadas: filas.length, productosVinculados: vinculados };
