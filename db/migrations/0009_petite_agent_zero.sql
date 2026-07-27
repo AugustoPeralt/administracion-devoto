@@ -1,0 +1,2 @@
+ALTER TABLE "cp_facturas" ADD COLUMN "local_id" integer;--> statement-breakpoint
+ALTER TABLE "cp_facturas" ADD CONSTRAINT "cp_facturas_local_id_alq_locales_id_fk" FOREIGN KEY ("local_id") REFERENCES "public"."alq_locales"("id") ON DELETE no action ON UPDATE no action;

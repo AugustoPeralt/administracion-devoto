@@ -27,16 +27,14 @@ const MODULOS: Record<string, ModuloNav> = {
       { href: "/consolidados/errores-excel", label: "Errores de Excel" },
     ],
   },
-  alquileres: {
-    label: "Alquileres",
+  "control-precios": {
+    label: "Control de Precios",
     items: [
-      { href: "/alquileres", label: "Dashboard" },
-      { href: "/alquileres/pagos", label: "Pagos" },
-      { href: "/alquileres/contratos", label: "Contratos" },
-      { href: "/alquileres/canon", label: "Canon vigente" },
-      { href: "/alquileres/alertas", label: "Alertas" },
-      { href: "/alquileres/mapeos", label: "Mapeos" },
-      { href: "/alquileres/documentos", label: "Documentos" },
+      { href: "/control-precios/carga", label: "Cargar comprobante" },
+      { href: "/control-precios/comparacion", label: "Comparar proveedores" },
+      { href: "/control-precios/reportes", label: "Reporte de precios" },
+      { href: "/control-precios/proveedores", label: "Calidad de datos" },
+      { href: "/control-precios/verduleria", label: "Precios verdulería" },
     ],
   },
 };

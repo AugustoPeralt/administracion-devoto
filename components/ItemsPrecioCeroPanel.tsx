@@ -1,0 +1,94 @@
+"use client";
+
+import { asignarPrecioManual, eliminarItemDetalle } from "@/app/control-precios/actions";
+import { parseNumeroDecimal } from "@/lib/formato";
+import type { ItemPrecioCero } from "@/lib/control-precios/consultas";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+export function ItemsPrecioCeroPanel({ items }: { items: ItemPrecioCero[] }) {
+  const router = useRouter();
+  const [valores, setValores] = useState<Record<number, string>>({});
+  const [procesando, setProcesando] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (items.length === 0) return null;
+
+  async function asignar(detalleId: number) {
+    const precio = parseNumeroDecimal(valores[detalleId]);
+    if (!Number.isFinite(precio) || precio <= 0) return;
+    setError(null);
+    setProcesando(detalleId);
+    try {
+      await asignarPrecioManual(detalleId, precio);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al guardar el precio.");
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  async function eliminar(detalleId: number) {
+    setError(null);
+    setProcesando(detalleId);
+    try {
+      await eliminarItemDetalle(detalleId);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al eliminar el ítem.");
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <h2 className="mb-1 text-sm font-semibold text-amber-900">Ítems con precio $0 ({items.length})</h2>
+      <p className="mb-3 text-xs text-amber-700">
+        Casi siempre es la IA leyendo una línea de impuestos/percepciones/bonificación como si fuera un producto
+        comprado — borrala. Si en cambio es un producto real al que no se le leyó el precio, asignaselo.
+      </p>
+      <div className="space-y-2">
+        {items.map((it) => (
+          <div
+            key={it.detalleId}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-white p-2.5 text-sm"
+          >
+            <span className="font-medium text-slate-900">{it.productoNombre}</span>
+            <span className="text-xs text-slate-500">cant. {it.cantidad}</span>
+            <span className="text-xs text-slate-400">{it.proveedorNombre}</span>
+            <span className="text-xs text-slate-400">{it.localNombre ?? "sin local"}</span>
+            <span className="text-xs text-slate-400">{it.fechaEmision.slice(0, 10)}</span>
+            <div className="flex-1" />
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Precio real"
+              value={valores[it.detalleId] ?? ""}
+              onChange={(e) => setValores((prev) => ({ ...prev, [it.detalleId]: e.target.value }))}
+              className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-950"
+            />
+            <button
+              type="button"
+              disabled={!valores[it.detalleId] || procesando === it.detalleId}
+              onClick={() => void asignar(it.detalleId)}
+              className="rounded-md bg-slate-950 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Asignar
+            </button>
+            <button
+              type="button"
+              disabled={procesando === it.detalleId}
+              onClick={() => void eliminar(it.detalleId)}
+              className="rounded-md border border-rose-300 bg-white px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              No es un producto, borrar
+            </button>
+          </div>
+        ))}
+      </div>
+      {error && <p className="mt-2 text-xs text-rose-700">{error}</p>}
+    </div>
+  );
+}

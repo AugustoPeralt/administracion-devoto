@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { obtenerConceptosEsperados, obtenerTodasLasCajas } from "@/lib/queries";
 import { Badge } from "@/components/Badge";
-import { crearConceptoEsperado, alternarActivoConcepto, eliminarConceptoEsperado } from "../actions";
+import {
+  crearConceptoEsperado,
+  alternarActivoConcepto,
+  eliminarConceptoEsperado,
+  editarPalabrasClaveConcepto,
+} from "../actions";
 
 export default async function ReglasAlertasPage() {
   const [conceptos, cajas] = await Promise.all([obtenerConceptosEsperados(), obtenerTodasLasCajas()]);
@@ -19,6 +24,12 @@ export default async function ReglasAlertasPage() {
           Por cada caja, definí qué código de titular o de cuenta identifica un pago que se espera todos los
           meses (ej. alquiler, sueldos). El sistema compara ese código contra los movimientos cargados en el mes
           actual — si no aparece ninguno con ese código, avisa en <Link href="/consolidados/alertas" className="underline">Alertas</Link>.
+        </p>
+        <p className="max-w-3xl text-sm text-slate-500">
+          Las <strong>palabras clave</strong> son un chequeo de respaldo opcional (separadas por coma) para cuando
+          se carga el pago sin el código y directamente como concepto libre (ej. &quot;OFICINA DE SEIS&quot;
+          suelto, sin cód. titular). Antes de avisar, además del código se busca ese texto en la descripción o el
+          concepto manual del movimiento. Un prefijo &quot;=&quot; exige coincidencia exacta en vez de substring.
         </p>
       </div>
 
@@ -70,6 +81,15 @@ export default async function ReglasAlertasPage() {
               className="w-24 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
             />
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500">Palabras clave (opcional)</label>
+            <input
+              type="text"
+              name="palabrasClave"
+              placeholder="Ej. OFICINA DE SEIS — chequeo de respaldo por texto"
+              className="min-w-64 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
+            />
+          </div>
           <button
             type="submit"
             className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-slate-800"
@@ -86,6 +106,7 @@ export default async function ReglasAlertasPage() {
               <th className="px-3 py-2">Caja</th>
               <th className="px-3 py-2">Concepto</th>
               <th className="px-3 py-2">Código</th>
+              <th className="px-3 py-2">Palabras clave (respaldo)</th>
               <th className="px-3 py-2">Estado</th>
               <th className="px-3 py-2"></th>
             </tr>
@@ -97,6 +118,21 @@ export default async function ReglasAlertasPage() {
                 <td className="px-3 py-2 text-slate-800">{c.nombre}</td>
                 <td className="px-3 py-2 font-mono text-xs text-slate-500">
                   {c.codTitular !== null ? `titular ${c.codTitular}` : `cuenta ${c.codCuenta}`}
+                </td>
+                <td className="px-3 py-2">
+                  <form action={editarPalabrasClaveConcepto} className="flex items-center gap-2">
+                    <input type="hidden" name="id" value={c.id} />
+                    <input
+                      type="text"
+                      name="palabrasClave"
+                      defaultValue={c.palabrasClave ?? ""}
+                      placeholder="Sin configurar"
+                      className="min-w-48 rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-950"
+                    />
+                    <button type="submit" className="whitespace-nowrap text-xs text-slate-500 hover:text-slate-900">
+                      Guardar
+                    </button>
+                  </form>
                 </td>
                 <td className="px-3 py-2">
                   {c.activo ? <Badge color="verde">Activa</Badge> : <Badge>Desactivada</Badge>}
@@ -120,7 +156,7 @@ export default async function ReglasAlertasPage() {
             ))}
             {conceptos.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-slate-400">
+                <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
                   Todavía no hay reglas configuradas.
                 </td>
               </tr>

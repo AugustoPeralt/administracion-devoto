@@ -1,0 +1,2 @@
+ALTER TABLE "cp_facturas" ADD COLUMN "numero_factura" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "cp_facturas_proveedor_numero_idx" ON "cp_facturas" USING btree ("proveedor_id","numero_factura") WHERE "cp_facturas"."numero_factura" IS NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE "conceptos_esperados" ADD COLUMN "palabras_clave" text;

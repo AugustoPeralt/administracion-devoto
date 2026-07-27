@@ -57,6 +57,97 @@
       "when": 1783952474444,
       "tag": "0007_slippery_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783961039838,
+      "tag": "0008_foamy_jetstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784046159177,
+      "tag": "0009_petite_agent_zero",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784214910509,
+      "tag": "0010_agregar_descuento_item_factura",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784217376029,
+      "tag": "0011_agregar_cola_reanalisis_sugerido",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784300837131,
+      "tag": "0012_quitar_cola_reanalisis_sugerido",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784302389250,
+      "tag": "0013_agregar_alertas_historicas_revisadas",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784303423765,
+      "tag": "0014_agregar_palabras_clave_conceptos_esperados",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784565487514,
+      "tag": "0015_lush_jigsaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784729263026,
+      "tag": "0016_optimal_harry_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784731327616,
+      "tag": "0017_serious_lake",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784830734512,
+      "tag": "0018_nappy_maximus",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784833422238,
+      "tag": "0019_great_puppet_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784903252379,
+      "tag": "0020_wonderful_hardball",
+      "breakpoints": true
     }
   ]
 }

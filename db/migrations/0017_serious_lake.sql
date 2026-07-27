@@ -1,0 +1,1 @@
+DROP INDEX "cp_facturas_proveedor_numero_idx";

@@ -15,9 +15,10 @@ const MODULOS: Modulo[] = [
     disponible: true,
   },
   {
-    href: "/alquileres",
-    nombre: "Alquileres",
-    descripcion: "Monitoreo de contratos de locación: vencimientos, canon vigente y estado de pagos por local.",
+    href: "/control-precios/carga",
+    nombre: "Control de Precios",
+    descripcion:
+      "Carga de facturas de proveedores con IA, cruce de precios de verdulería y auditoría de aumentos por rubro.",
     disponible: true,
   },
 ];

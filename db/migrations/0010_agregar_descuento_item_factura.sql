@@ -1,0 +1,1 @@
+ALTER TABLE "cp_detalle_facturas" ADD COLUMN "descuento" numeric(18, 2);

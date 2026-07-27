@@ -1,0 +1,150 @@
+/**
+ * Registro de los 82 pares Criollo↔Emporio que la IA identificó leyendo las
+ * descripciones de ambos catálogos (2026-07-23), después de descartar los que
+ * parecían iguales por palabras compartidas pero eran en realidad otro
+ * producto (ej. "CHEDDAR...LA PAULINA" vs "MUZZ...LA PAULINA" — mismo marca,
+ * distinto tipo de queso) o tenían ambigüedad real (dos productos del mismo
+ * lado compitiendo por el mismo renglón genérico del otro, tamaños/pack
+ * distintos, etc.). Es idempotente (onConflictDoNothing) — correrlo de nuevo
+ * no duplica nada. No cubre el resto de las dos listas: lo que no aparece acá
+ * o no tiene candidato razonable, o quedó para revisar a mano en
+ * /control-precios/comparacion.
+ *
+ * Uso: npx tsx scripts/confirmar-pares-criollo-emporio.ts
+ */
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
+import { db } from "../db";
+import { cpListasPreciosProveedor, cpParesPreciosProveedores } from "../db/schema";
+import { and, eq } from "drizzle-orm";
+
+const CRIOLLO_ID = 8;
+const EMPORIO_ID = 29;
+
+// [descripción exacta en la lista de El Criollo, descripción exacta en la lista de El Emporio]
+const PARES_CONFIRMADOS: [string, string][] = [
+  ["BARRA DANBO LA PAULINA KG SIN GLUTEN", "BARRA DANBO LA PAULINA"],
+  ["BARRA TYBO LA PAULINA KG SIN GLUTEN", "BARRA TYBO LA PAULINA"],
+  ["CREMOSO SAINT PAULIN KG SIN GLUTEN", "CREMOSO SAINT PAULIN"],
+  ["FONTINA LA PAULINA KG SIN GLUTEN", "FONTINA LA PAULINA"],
+  ["GOYA LA PAULINA KG SIN GLUTEN", "GOYA LA PAULINA"],
+  ["PROVOLETA PARRILLERA SANTA ROSA SIN GLUTEN", "PROVOLETA SANTA ROSA"],
+  ["QUESO CREMA MILKAUT BALDE X 3.6 KG SIN GLUTEN", "QUESO CRE MILKAUT BALDE 3.6KG"],
+  ["QUESO FINLANDIA CLASICO X 290 GR SIN GLUTEN", "QUESO FINLANDIA CLASICO 290GR"],
+  ["REGGIANITO MELINCUE SIN PINTAR SIN GLUTEN", "REGGIANITO MELINCUE S/PINT"],
+  ["BRIE MOZZARI KG SIN GLUTEN", "QUESO BRIE MOZZARI KG"],
+  ["BURRATA MOZZARI X 250 GRS SIN GLUTEN", "BURRATA MOZZARI 250GR"],
+  ["MUZARELLA BOCCONCINO MOZZARI X 1 KG SIN GLUTEN", "BOCCONCINO MOZZARI 1KG"],
+  ["MARGARINA MASA PREMIUM CALSA X 5 KG", "MARGA MASA PREMIUM CALSA 5KG"],
+  ["RICOTA GARCIA X 3 KG SIN GLUTEN", "RICOTA GARCIA 3KG"],
+  ["MORTADELA BOCHA CAMPO AUSTRAL", "MORTADELA BOCHA C/AUSTRAL"],
+  ["MORTADELA CON PISTACHO MONTESANO KG SIN GLUTEN", "MORTADELA C/PIST MONTESANO"],
+  ["SALAME DE MILAN CAMPO AUSTRAL", "SALAME MILAN C/AUSTRAL"],
+  ["ARROZ CARNAROLI GALLO X 5 KG SIN GLUTEN", "ARROZ CARNAROLI GALLO 5KG"],
+  ["ARROZ DOBLE CAROLINA GALLO ESTUCHE X 1 KG S/GLUTEN", "ARROZ DOBLE CAROLINA GALLO 1KG"],
+  ["SEMOLIN CAÑUELAS X 25 KG", "SEMOLIN 25KG CAÑUELAS"],
+  ["REBOZADOR KNORR X 4 KG", "REBOZADOR KNORR 4KG"],
+  ["REBOZADOR TOTAL KNORR X 10 KG", "REBOZADOR TOTAL KNORR 10KG"],
+  ["SALSA BLANCA KNORR X 880 GR", "SALSA BLANCA KNORR 880GR"],
+  ["SALSA DEMIGLACE KNORR X 1 KG", "SALSA DEMIGLACE KNORR 1KG"],
+  ["SALSA DEMIGLACE SAFRA X 480 GRS", "&SALSA DEMIGLACE SAFRA 480GR"],
+  ["AVE MARIA LUCCHETTI X 500 GR", "FIDEOS AVE MARIA LUCCHETTI 500GR"],
+  ["COCTEL DE FRUTAS ALCO X 820 GRS SIN GLUTEN", "&COCTEL FRUTAS ALCO 820GR"],
+  ["PERAS EN MITADES ALCO X 820 GRS SIN GLUTEN", "PERAS ALCO 820GR"],
+  ["MORRON REY DE REYES X 780 GR", "&MORRON ENTE REY DE REYES 780G"],
+  ["LENTEJON AGROMAR X 5 KG", "LENTEJON AGROMAR 5KG"],
+  ["PIMENTON EXTRA DULCE CUMANA X 1KG SIN GLUTEN", "PIMENTON CUMANA 1KG"],
+  ["SALSA TABASCO CHIPOTLE X 60 CC", "SALSA TABASCO CHIPOTLE 60ml"],
+  ["AZUCAR RUBIA MASCABO LEDESMA X 800GR SIN GLUTEN", "AZUCAR RUBIA LEDESMA 800GR"],
+  ["LEVADURA FRESCA CALSA X 500 GRS SIN GLUTEN", "LEVADURA CALSA 500GR"],
+  ["CARTE DOR BROWNIE Y VOLCAN X 1 KG", "BROWNIE VOLCAN CARTE D'OR 1KG"],
+  ["CARTE DOR TIRAMISU X 1 KG SIN GLUTEN", "TIRAMISU CARTE D'OR 1KG"],
+  ["CACAO NESQUIK CON VITAMINA X 2 KG SIN GLUTEN", "CACAO NESQUIK 2KG"],
+  ["TE CACHAMAI AMARILLO X 20 UDS SIN GLUTEN", "TE AMARILLO CACHAMAI 20uni"],
+  ["TE TILO CACHAMAI X 20 UDS SIN GLUTEN", "TE TILO CACHAMAI 20uni"],
+  ["TE VERDE GREEN HILLS X 25 UDS", "TE VERDE GREEN HILLS 25u"],
+  ["FERNET BRANCA X 1 LT", "FERNET BRANCA 1LT"],
+  ["GRANADINA CUSENIER X 750 CC", "GRANADINA CUSENIER 750CC"],
+  ["MARSALA FLORIO X 750 CC", "MARSALA FLORIO 750CC"],
+  ["MOSCATO FLORIO X 750 CC", "MOSCATO FLORIO 750CC"],
+  ["OPORTO FLORIO X 750 CC", "OPORTO FLORIO 750CC"],
+  ["LICOR DE CAFE CUSENIER X 700CC", "LICOR CAFE A/COG CUSENI 700CC"],
+  ["LICOR TRIPLE SEC TRES PLUMAS X 750 CC", "LICOR TRIPLE SEC 3 PLUMAS 750CC"],
+  // --- segunda tanda (revisadas entre los "sospechosos" de mayor puntaje) ---
+  ["PURE DE PAPAS KNORR X 5 KG SIN GLUTEN", "PURE PAPAS KNORR 5KG"],
+  ["HARINA 000 FAVORITA X 1 KG", "HARINA 000 FAVORITA 1KG"],
+  ["REBOZADOR PREFERIDO X 5 KG", "REBOZADOR PREFERIDO 5KG"],
+  ["LECHE TREGAR ENTERA X 1LT SIN GLUTEN", "LECHE ENTE LV TREGAR 1LT"],
+  ["ARROZ PARBOIL GALLO ORO X 5 KG SIN GLUTEN", "ARROZ GALLO ORO 5KG"],
+  ["TOMATE PURE TETRA ALCO X 520 CC SIN GLUTEN", "TOMATE PURE 520GR ALCO"],
+  ["TOMATE PURE TETRA ARCOR X 520 CC SIN GLUTEN", "TOMATE PURE 520GR ARCOR"],
+  ["PILON MANTECA LA PAULINA X 25 KG SIN GLUTEN", "MANTECA 25KG LA PAULINA"],
+  ["PILON MANTECA MILKAUT X 5 KG SIN GLUTEN", "MANTECA 5KG MILKAUT"],
+  ["PILON MANTECA YOLCLE X 5 KG SIN GLUTEN", "MANTECA 5KG YOLCLE"],
+  ["LECHE EN POLVO ENTERA VACALIN X 25 KG SIN GLUTEN", "LECHE ENTE POLVO 25KG VACALIN"],
+  ["MOSTAZA DIJON ANTIGUA ARYTZA X 850 GR SIN GLUTEN", "MOSTAZA DIJON ANT ARYTZA 850GR"],
+  ["ACEITE DE GIRASOL ALSAMAR BIDON X 5LT SIN GLUTEN", "ACEITE GIRA 5LT ALSAMAR"],
+  ["HARINA 0000 AZUL CAÑUELAS X 25 KG", "HARINA 0000 CAÑUELAS 25KG"],
+  ["MAIZENA X 15 KG SIN GLUTEN", "MAIZENA 15KG"],
+  ["AZUCAR BLANCA LEDESMA X 1 KG SIN GLUTEN", "AZUCAR LEDESMA 1KG"],
+  ["SALSA DE DULCE DE LECHE LHERITIER X 500GR S/GLUTEN", "SALSA DDL LHERITIER 500GR"],
+  ["MARGARINA REPOSTERIA-MASA MTK CALSA X 5 KGS", "MARGA MTK REPOSTERIA CALSA 5KG"],
+  ["PIMIENTA BLANCA MOLIDA CUMANA X 1KG SIN GLUTEN", "PIMIENTA BCA MOL CUMANA 1KG"],
+  ["HUMO LIQUIDO SAN GIORGIO X 1 LT.", "HUMO LIQ SAN GIORGIO 1LT"],
+  ["QUESO RALLADO LA QUESERA X 3 KG SIN GLUTEN", "QUESO RALL LA QUESERA 3KG"],
+  ["SARDO ESTACIONADO LA PAULINA S/PINTAR SIN GLUTEN", "SARDO ESTAC LA PAULINA"],
+  ["LECHE CONDENSADA NESTLE X 395 GR SIN GLUTEN", "LECHE CONDENS NESTLE 395GR"],
+  ["JAMON COCIDO CAMPO AUSTRAL KG SIN GLUTEN", "JAMON COCI C/AUSTRAL"],
+  ["VINAGRE DE VINO MENOYO X 5 LTS SIN GLUTEN", "VINAG VINO MENOYO 5LT"],
+  ["HARINA LEUDANTE BLANCAFLOR X 1 KG", "HARINA LEUD BLANCAFLOR 1KG"],
+  ["PAN RALLADO MORIXE X 5 KG", "PAN RALL MORIXE 5KG"],
+  ["PAN RALLADO PREFERIDO X 5 KG", "PAN RALL PREFERIDO 5KG"],
+  ["EXTRACTO DE CARNE SAFRA X 350", "EXTRAC CARNE SAFRA 350GR"],
+  ["CASERITO DON VICENTE X 500 GR", "FIDEOS CASERITO D/VICENTE 500GR"],
+  ["MOSTAZA SAVORA INDIVIDUAL X 196 UDS", "MOSTAZA SAVORA IND"],
+  ["MAIZ PISINGALLO AGROMAR X 5 KG", "MAIZ PISCINGALLO AGROMAR 5KG"],
+  ["POROTOS ALUBIA AGROMAR X 5 KG", "POROTO ALUBIA AGROMAR 5KG"],
+  ["AJI MOLIDO CUMANA X 1 KG SIN GLUTEN", "AJI MOL CUMANA 1KG"],
+  ["SAL ENTREFINA DOS ANCLAS X 25 KG", "SAL E/FN D/ANCLAS 25KG"],
+];
+
+async function buscarFila(proveedorId: number, descripcion: string) {
+  const filas = await db
+    .select()
+    .from(cpListasPreciosProveedor)
+    .where(and(eq(cpListasPreciosProveedor.proveedorId, proveedorId), eq(cpListasPreciosProveedor.descripcion, descripcion)));
+  return filas[0] ?? null;
+}
+
+async function main() {
+  let creados = 0;
+  const noEncontrados: string[] = [];
+
+  for (const [descCriollo, descEmporio] of PARES_CONFIRMADOS) {
+    const filaCriollo = await buscarFila(CRIOLLO_ID, descCriollo);
+    const filaEmporio = await buscarFila(EMPORIO_ID, descEmporio);
+    if (!filaCriollo || !filaEmporio) {
+      noEncontrados.push(`${descCriollo} <-> ${descEmporio} (criollo:${!!filaCriollo} emporio:${!!filaEmporio})`);
+      continue;
+    }
+    await db
+      .insert(cpParesPreciosProveedores)
+      .values({ listaAId: filaCriollo.id, listaBId: filaEmporio.id })
+      .onConflictDoNothing();
+    creados++;
+  }
+
+  console.log(`Pares creados: ${creados} de ${PARES_CONFIRMADOS.length}`);
+  if (noEncontrados.length > 0) {
+    console.log("No encontrados (revisar texto exacto):");
+    noEncontrados.forEach((n) => console.log(" -", n));
+  }
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

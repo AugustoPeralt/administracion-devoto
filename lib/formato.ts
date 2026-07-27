@@ -1,3 +1,11 @@
+/** Convierte un texto de input a número aceptando tanto "7291.5" como "7291,5"
+ * (coma decimal, formato habitual al tipear en es-AR) — devuelve NaN si no es un
+ * número válido, igual que Number(). */
+export function parseNumeroDecimal(texto: string | undefined): number {
+  if (texto === undefined) return NaN;
+  return Number(texto.trim().replace(",", "."));
+}
+
 export function formatoMoneda(valor: number | string | null, moneda: "ARS" | "USD" = "ARS"): string {
   if (valor === null) return "-";
   const num = typeof valor === "string" ? Number(valor) : valor;
@@ -16,6 +24,13 @@ export function formatoFecha(fecha: string | Date): string {
     year: "numeric",
     timeZone: "UTC",
   }).format(d);
+}
+
+/** Formatea un "YYYY-MM" (ej. de obtenerAlertasHistoricas) como "julio 2026". */
+export function formatoMesAnio(mes: string): string {
+  const [y, m] = mes.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1, 1));
+  return new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
 }
 
 export function formatoFechaHora(fecha: string | Date): string {

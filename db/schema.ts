@@ -193,6 +193,13 @@ export const consistenciaSaldos = pgTable(
  * caja en el Excel (columna COD), no por texto — el texto de la descripción varía
  * demasiado entre cargas ("ALQUILER LOCAL", "Alquiler local mes junio", ...) para
  * matchear de forma confiable. Cada regla exige exactamente uno de los dos códigos.
+ *
+ * palabrasClave es un chequeo de respaldo (opcional, separadas por coma): en la
+ * práctica, a veces se carga el pago sin el código de titular/cuenta y directamente
+ * como concepto libre (ej. "OFICINA DE SEIS"). Si el chequeo por código no encuentra
+ * nada, se busca además por estas palabras en descripcion_final/concepto_manual
+ * antes de dar por faltante el pago de ese mes — ver coincideKeyword en
+ * lib/matching-texto.ts (mismo mecanismo que alquileresEfectivo).
  */
 export const conceptosEsperados = pgTable("conceptos_esperados", {
   id: serial("id").primaryKey(),
@@ -202,6 +209,7 @@ export const conceptosEsperados = pgTable("conceptos_esperados", {
   nombre: text("nombre").notNull(),
   codTitular: integer("cod_titular"),
   codCuenta: integer("cod_cuenta"),
+  palabrasClave: text("palabras_clave"),
   activo: boolean("activo").notNull().default(true),
   creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -255,6 +263,29 @@ export const duplicadosRevisados = pgTable(
     creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("duplicados_caso_idx").on(t.cajaId, t.fecha, t.codTitular)]
+);
+
+/**
+ * Revisión de un hueco histórico de conceptosEsperados: un mes anterior al actual
+ * en el que ese concepto no apareció cargado en su caja. No se resuelve solo
+ * (nunca asumimos que "no pasa nada") — hay que confirmar que efectivamente faltó
+ * el pago (para hacer seguimiento) o justificar por qué está bien que no aparezca
+ * ese mes (ej. el contrato todavía no empezaba, se pagó bajo otro código, etc.).
+ */
+export const alertasHistoricasRevisadas = pgTable(
+  "alertas_historicas_revisadas",
+  {
+    id: serial("id").primaryKey(),
+    conceptoId: integer("concepto_id")
+      .notNull()
+      .references(() => conceptosEsperados.id),
+    mes: text("mes").notNull(),
+    estado: estadoDuplicadoEnum("estado").notNull(),
+    comentario: text("comentario").notNull(),
+    usuarioEmail: text("usuario_email").notNull(),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("alertas_historicas_caso_idx").on(t.conceptoId, t.mes)]
 );
 
 // ─── Alquileres ──────────────────────────────────────────────────────────────
@@ -416,3 +447,235 @@ export const alqSyncRuns = pgTable("alq_sync_runs", {
   hashesJson: text("hashes_json"),
   usuarioEmail: text("usuario_email"),
 });
+
+// ─── Control de Precios y Proveedores ───────────────────────────────────────
+// Prefijo "cp" para separar del dominio de Alquileres (arriba) y Consolidados.
+
+export const cpCategoriaInsumoEnum = pgEnum("cp_categoria_insumo", [
+  "CARNE",
+  "ALMACEN",
+  "VERDULERIA",
+  "BEBIBLES",
+  "DESCARTABLES",
+]);
+export const cpEstadoFacturaEnum = pgEnum("cp_estado_factura", [
+  "pendiente_revision",
+  "confirmada",
+]);
+// Trazabilidad de cómo se completó precio_unitario en detalle_facturas: 'factura'
+// es el caso normal (viene en el comprobante), 'referencia_5cynar' es el cruce
+// contra el Excel de contabilidad (ver cpPreciosReferenciaVerduleria) para el caso
+// de VERDULERIA que no imprime precio en el remito, y 'manual' es carga a mano en
+// la pantalla de validación cuando ninguna de las dos anteriores aplica.
+export const cpPrecioOrigenEnum = pgEnum("cp_precio_origen", [
+  "factura",
+  "referencia_5cynar",
+  "manual",
+]);
+
+export const cpProveedores = pgTable(
+  "cp_proveedores",
+  {
+    id: serial("id").primaryKey(),
+    nombre: text("nombre").notNull(),
+    categoria: cpCategoriaInsumoEnum("categoria").notNull(),
+    cuit: text("cuit"),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_proveedores_cuit_idx").on(t.cuit)]
+);
+
+export const cpProductos = pgTable(
+  "cp_productos",
+  {
+    id: serial("id").primaryKey(),
+    nombre: text("nombre").notNull(),
+    proveedorId: integer("proveedor_id")
+      .notNull()
+      .references(() => cpProveedores.id, { onDelete: "cascade" }),
+    unidadMedida: text("unidad_medida").notNull().default("u"), // kg, lt, pack, u, horma
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_productos_nombre_proveedor_idx").on(t.nombre, t.proveedorId)]
+);
+
+export const cpFacturas = pgTable("cp_facturas", {
+  id: serial("id").primaryKey(),
+  proveedorId: integer("proveedor_id")
+    .notNull()
+    .references(() => cpProveedores.id),
+  // FK cruzado al dominio de Alquileres (alqLocales) a propósito: son los mismos
+  // restaurantes físicos, y ese catálogo ya existe y está cargado — no tiene sentido
+  // duplicar los mismos 9 nombres en una tabla nueva. Nullable porque una factura
+  // puede quedar sin local asignado si se cargó fuera del flujo normal de lote.
+  localId: integer("local_id").references(() => alqLocales.id),
+  fechaEmision: date("fecha_emision").notNull(),
+  fechaCarga: timestamp("fecha_carga", { withTimezone: true }).notNull().defaultNow(),
+  montoTotal: numeric("monto_total", { precision: 18, scale: 2 }).notNull(),
+  // Referencia al comprobante original. Dos formatos conviven a propósito (ver
+  // lib/control-precios/CLAUDE.md y esClaveR2() en lib/control-precios/r2.ts):
+  // URL completa (https://...) = facturas viejas, siguen en Vercel Blob sin
+  // migrar; clave relativa (sin protocolo) = facturas nuevas, en Cloudflare R2
+  // (Blob free tier se llena en semanas al ritmo real de carga).
+  archivoUrl: text("archivo_url"),
+  estado: cpEstadoFacturaEnum("estado").notNull().default("pendiente_revision"),
+  // Número de comprobante impreso (ej. "0009-00719112") — nullable porque no
+  // siempre es legible. Sirve para detectar en confirmarFactura() si esta misma
+  // factura ya se cargó antes (frecuente al cargar facturas viejas en lote, donde
+  // es fácil repetir una foto sin darse cuenta). A propósito NO tiene índice único:
+  // un comprobante de varias páginas repite el mismo número en cada hoja con
+  // productos distintos — la detección de duplicado real compara también los
+  // productos (ver confirmarFactura()), algo que un constraint de la tabla no
+  // puede expresar.
+  numeroFactura: text("numero_factura"),
+});
+
+export const cpDetalleFacturas = pgTable("cp_detalle_facturas", {
+  id: serial("id").primaryKey(),
+  facturaId: integer("factura_id")
+    .notNull()
+    .references(() => cpFacturas.id, { onDelete: "cascade" }),
+  productoId: integer("producto_id")
+    .notNull()
+    .references(() => cpProductos.id),
+  cantidad: numeric("cantidad", { precision: 12, scale: 2 }).notNull(),
+  // Nullable: un remito de VERDULERIA puede llegar sin precio — se completa después
+  // contra cpPreciosReferenciaVerduleria, o queda null para carga manual.
+  precioUnitario: numeric("precio_unitario", { precision: 18, scale: 2 }),
+  // Bonificación impresa en el renglón (ej. FEMSA descuenta por producto en algunos
+  // remitos). Nullable: la mayoría de los ítems no tienen. Entra en el cálculo de
+  // "subtotal" — ver confirmarFactura().
+  descuento: numeric("descuento", { precision: 18, scale: 2 }),
+  // SIEMPRE calculado por el sistema (cantidad × precio_unitario − descuento),
+  // nunca tomado tal cual del papel — precio_unitario es la prioridad del sistema
+  // y así queda comparable en el tiempo sin el ruido de IVA/Impuestos Internos que
+  // algunos proveedores (FEMSA, distribuidoras de vino) ya suman en su "subtotal"
+  // impreso. Ver confirmarFactura(). Ese valor impreso se guarda aparte, sin
+  // recalcular, en subtotalImpreso.
+  subtotal: numeric("subtotal", { precision: 18, scale: 2 }),
+  // Total de línea tal cual lo imprime el comprobante (puede incluir IVA/Impuestos
+  // Internos) — puramente informativo/contable, no se usa para comparar precios.
+  subtotalImpreso: numeric("subtotal_impreso", { precision: 18, scale: 2 }),
+  // Tasa de IVA del renglón si la IA pudo leerla o inferirla. Informativo.
+  ivaPorcentaje: numeric("iva_porcentaje", { precision: 5, scale: 2 }),
+  precioOrigen: cpPrecioOrigenEnum("precio_origen").notNull().default("factura"),
+  // true = una persona confirmó a mano que el subtotal es correcto aunque no
+  // reconcilie contra subtotal_impreso (ver obtenerHistorialComprasPorProducto).
+  // Caso real: proveedores tipo FEMSA/Quilmes, donde subtotal_impreso quedó
+  // tomado de la columna "Total con impuestos" de la factura (no la neta), así
+  // que nunca va a coincidir con nuestro subtotal aunque esté bien — en vez de
+  // pisar subtotal_impreso (perdería el dato real impreso), se marca acá que
+  // ya se validó por otro medio (ver scripts/marcar-verificado-manual.ts).
+  // Default false: no reemplaza el chequeo automático, es un complemento.
+  verificadoManual: boolean("verificado_manual").notNull().default(false),
+});
+
+/**
+ * Precios de referencia importados del Excel de contabilidad de 5cynar
+ * (facturaBpedidosJulio-diciembre 2026.xlsx): una fila por producto, con una
+ * columna de precio por mes (Columna D en adelante = Julio 2026, Agosto 2026, ...).
+ *
+ * Clave por NOMBRE normalizado, no por FK a cp_productos: el Excel de 5cynar es una
+ * lista de precios de mercado de contabilidad, independiente de qué verdulería
+ * puntual mandó el remito de cada local — no hay un cp_productos (que sí está
+ * scopeado a un proveedor_id concreto) al que asociarlo 1:1. El cruce en
+ * confirmarFactura() matchea por producto_nombre_normalizado, no por id.
+ *
+ * `periodo` guarda el primer día del mes (ej. 2026-07-01) para poder resolver la
+ * columna correcta a partir de fecha_emision sin parsear texto de encabezado en
+ * tiempo de consulta. Reimportar el archivo hace upsert por (nombre, periodo).
+ */
+export const cpPreciosReferenciaVerduleria = pgTable(
+  "cp_precios_referencia_verduleria",
+  {
+    id: serial("id").primaryKey(),
+    productoNombreNormalizado: text("producto_nombre_normalizado").notNull(),
+    productoNombre: text("producto_nombre").notNull(), // tal como figura en el Excel, para mostrar en UI
+    unidadMedida: text("unidad_medida").notNull().default("u"),
+    periodo: date("periodo").notNull(),
+    precioUnitario: numeric("precio_unitario", { precision: 18, scale: 2 }).notNull(),
+    archivoOrigen: text("archivo_origen").notNull(),
+    importadoEn: timestamp("importado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("cp_precios_referencia_nombre_periodo_idx").on(
+      t.productoNombreNormalizado,
+      t.periodo
+    ),
+  ]
+);
+
+/**
+ * Lista de precios cotizada por un proveedor (catálogo/cotización) — a
+ * diferencia de cp_detalle_facturas, NO son compras reales, son precios de
+ * lista para poder comparar entre proveedores candidatos antes de decidir a
+ * quién comprarle. Cada carga nueva reemplaza la vigente de ese proveedor
+ * (upsert por proveedor_id + codigo_proveedor en vez de borrar todo e
+ * insertar de cero, para no perder los vínculos y pares ya confirmados de los
+ * códigos que siguen existiendo — ver importarListaPrecios()): es "cuánto
+ * cuesta HOY", no un historial de precios de lista en el tiempo.
+ */
+export const cpListasPreciosProveedor = pgTable(
+  "cp_listas_precios_proveedor",
+  {
+    id: serial("id").primaryKey(),
+    proveedorId: integer("proveedor_id")
+      .notNull()
+      .references(() => cpProveedores.id, { onDelete: "cascade" }),
+    codigoProveedor: text("codigo_proveedor").notNull(), // código de artículo interno del proveedor
+    descripcion: text("descripcion").notNull(), // nombre tal cual figura en la lista
+    presentacion: text("presentacion"), // packaging/unidad de venta, si el archivo lo trae
+    categoria: text("categoria"), // sección del catálogo (ej. "QUESOS"), si el archivo la trae
+    precioLista: numeric("precio_lista", { precision: 18, scale: 2 }).notNull(),
+    // Precio final negociado (con bonificación/descuento) SI el archivo del
+    // proveedor lo trae como columna propia (ej. El Emporio). Null cuando el
+    // proveedor no imprime esa columna (ej. El Criollo) — ver
+    // DESCUENTO_LISTA_EL_CRIOLLO en constantes.ts para ese caso puntual.
+    precioConBonificacion: numeric("precio_con_bonificacion", { precision: 18, scale: 2 }),
+    // Vínculo con nuestro propio catálogo de ESE MISMO proveedor — solo se
+    // completa automático cuando el nombre normalizado coincide EXACTO (mismo
+    // proveedor, mismo estilo de nombre, sin ambigüedad). Null si no hubo
+    // coincidencia exacta; se usa para traer el último precio REAL pagado en
+    // vez del precio de lista al comparar.
+    productoId: integer("producto_id").references(() => cpProductos.id),
+    archivoOrigen: text("archivo_origen").notNull(),
+    importadoEn: timestamp("importado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_listas_precios_proveedor_codigo_idx").on(t.proveedorId, t.codigoProveedor)]
+);
+
+/**
+ * Par entre "este renglón de la lista de un proveedor" y "este renglón de la
+ * lista de otro proveedor" — hace falta porque los nombres no coinciden entre
+ * catálogos de proveedores distintos (comprobado: 0 coincidencias exactas
+ * entre las listas de El Criollo y El Emporio) — no hay forma automática
+ * 100% confiable de saberlo.
+ *
+ * `confirmado = true`: ya validado (a mano en la pantalla de emparejado, o por
+ * una persona al revisar una sugerencia) — es lo único que entra a la
+ * comparación de precios. `confirmado = false`: sugerencia todavía sin
+ * revisar (ej. las que arma la IA leyendo ambas descripciones con similitud
+ * parcial, ver scripts/confirmar-pares-criollo-emporio.ts y el panel de
+ * "Sugerencias pendientes") — no se usa para nada hasta que una persona la
+ * confirme o la descarte, justo para no mezclar una comparación de precios
+ * con pares que todavía nadie validó.
+ */
+export const cpParesPreciosProveedores = pgTable(
+  "cp_pares_precios_proveedores",
+  {
+    id: serial("id").primaryKey(),
+    listaAId: integer("lista_a_id")
+      .notNull()
+      .references(() => cpListasPreciosProveedor.id, { onDelete: "cascade" }),
+    listaBId: integer("lista_b_id")
+      .notNull()
+      .references(() => cpListasPreciosProveedor.id, { onDelete: "cascade" }),
+    confirmado: boolean("confirmado").notNull().default(true),
+    // Por qué se sugirió el par y/o por qué no se confirmó solo (ej. "mismo
+    // texto pero compite con otro candidato", "tamaño de envase distinto") —
+    // para que quien revise la sugerencia no tenga que adivinar el motivo.
+    motivo: text("motivo"),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_pares_precios_a_b_idx").on(t.listaAId, t.listaBId)]
+);

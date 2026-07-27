@@ -1,0 +1,1 @@
+ALTER TABLE "cp_detalle_facturas" ADD COLUMN "verificado_manual" boolean DEFAULT false NOT NULL;

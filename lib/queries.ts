@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  alertasHistoricasRevisadas,
   cajas,
   conceptosEsperados,
   consistenciaSaldos,
@@ -8,6 +9,7 @@ import {
   justificacionesAuditoria,
   movimientosCaja,
 } from "@/db/schema";
+import { coincideKeyword, parsearPalabrasClave } from "./matching-texto";
 
 /** neon-http a veces devuelve arrays de Postgres como texto "{a,b,c}" en vez de array JS. */
 function comoArray(valor: unknown): string[] {
@@ -333,6 +335,7 @@ export interface ConceptoEsperado {
   nombre: string;
   codTitular: number | null;
   codCuenta: number | null;
+  palabrasClave: string | null;
   activo: boolean;
 }
 
@@ -347,6 +350,7 @@ export async function obtenerConceptosEsperados(): Promise<ConceptoEsperado[]> {
       nombre: conceptosEsperados.nombre,
       codTitular: conceptosEsperados.codTitular,
       codCuenta: conceptosEsperados.codCuenta,
+      palabrasClave: conceptosEsperados.palabrasClave,
       activo: conceptosEsperados.activo,
     })
     .from(conceptosEsperados)
@@ -355,10 +359,56 @@ export async function obtenerConceptosEsperados(): Promise<ConceptoEsperado[]> {
 }
 
 /**
+ * Trae, para las cajas indicadas, un índice mes->movimientos con su texto libre
+ * (descripcion_final / concepto_manual), para el chequeo de respaldo por palabras
+ * clave: cuando un pago se carga sin código de titular/cuenta (directamente como
+ * concepto), el chequeo por código no lo va a encontrar nunca.
+ */
+async function construirIndiceTextoPorCajaMes(
+  cajaIds: number[]
+): Promise<Map<string, { descripcionFinal: string; conceptoManual: string | null }[]>> {
+  const indice = new Map<string, { descripcionFinal: string; conceptoManual: string | null }[]>();
+  if (cajaIds.length === 0) return indice;
+
+  const filas = await db
+    .select({
+      cajaId: movimientosCaja.cajaId,
+      fecha: movimientosCaja.fecha,
+      descripcionFinal: movimientosCaja.descripcionFinal,
+      conceptoManual: movimientosCaja.conceptoManual,
+    })
+    .from(movimientosCaja)
+    .where(inArray(movimientosCaja.cajaId, cajaIds));
+
+  for (const f of filas) {
+    const clave = `${f.cajaId}::${f.fecha.slice(0, 7)}`;
+    (indice.get(clave) ?? indice.set(clave, []).get(clave)!).push(f);
+  }
+  return indice;
+}
+
+function coincidePorTexto(
+  indiceTexto: Map<string, { descripcionFinal: string; conceptoManual: string | null }[]>,
+  cajaId: number,
+  mes: string,
+  palabrasClave: string | null
+): boolean {
+  const keywords = parsearPalabrasClave(palabrasClave);
+  if (keywords.length === 0) return false;
+  const movs = indiceTexto.get(`${cajaId}::${mes}`) ?? [];
+  return movs.some((m) => keywords.some((kw) => coincideKeyword(kw, m.descripcionFinal, m.conceptoManual)));
+}
+
+/**
  * Pagos recurrentes activos que todavía NO aparecen cargados este mes (por código
  * de titular o de cuenta, según cómo esté configurada cada regla). No corrige ni
  * asume nada — solo señala para que la dirección confirme si ya se pagó y falta
  * cargar, o directamente no se pagó.
+ *
+ * Antes de darlo por faltante hace un segundo chequeo por texto libre (ver
+ * construirIndiceTextoPorCajaMes / coincidePorTexto), para las reglas que tengan
+ * palabrasClave configuradas — cubre el caso de pagos cargados sin código, como
+ * concepto suelto.
  */
 export async function obtenerAlertasMesActual(): Promise<ConceptoEsperado[]> {
   const { desde, hasta } = calcularRango("mes");
@@ -383,11 +433,147 @@ export async function obtenerAlertasMesActual(): Promise<ConceptoEsperado[]> {
   const setTitular = new Set(presentesTitular.map((r) => `${r.cajaId}::${r.codTitular}`));
   const setCuenta = new Set(presentesCuenta.map((r) => `${r.cajaId}::${r.codCuenta}`));
 
-  return conceptos.filter((c) => {
+  const faltantes = conceptos.filter((c) => {
     if (c.codTitular !== null) return !setTitular.has(`${c.cajaId}::${c.codTitular}`);
     if (c.codCuenta !== null) return !setCuenta.has(`${c.cajaId}::${c.codCuenta}`);
     return false;
   });
+
+  const cajaIdsConKeywords = [
+    ...new Set(faltantes.filter((c) => parsearPalabrasClave(c.palabrasClave).length > 0).map((c) => c.cajaId)),
+  ];
+  if (cajaIdsConKeywords.length === 0) return faltantes;
+
+  const mesActual = mesActualStr();
+  const indiceTexto = await construirIndiceTextoPorCajaMes(cajaIdsConKeywords);
+  return faltantes.filter((c) => !coincidePorTexto(indiceTexto, c.cajaId, mesActual, c.palabrasClave));
+}
+
+function mesActualStr(): string {
+  const hoy = new Date();
+  return `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Lista de meses "YYYY-MM" desde `desde` (inclusive) hasta `hasta` (EXCLUSIVE). */
+function mesesEntre(desde: string, hasta: string): string[] {
+  const [yDesde, mDesde] = desde.split("-").map(Number);
+  const [yHasta, mHasta] = hasta.split("-").map(Number);
+  const meses: string[] = [];
+  let y = yDesde;
+  let m = mDesde;
+  while (y < yHasta || (y === yHasta && m < mHasta)) {
+    meses.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return meses;
+}
+
+export interface AlertaHistorica {
+  conceptoId: number;
+  cajaId: number;
+  cajaNombre: string;
+  nombre: string;
+  codTitular: number | null;
+  codCuenta: number | null;
+  mes: string;
+  estado: "pendiente" | "confirmado" | "justificado";
+  comentario: string | null;
+  usuarioEmail: string | null;
+  fechaResolucion: Date | null;
+}
+
+export type EstadoAlertaHistorica = "pendientes" | "confirmados" | "justificados" | "todos";
+
+/**
+ * Igual que obtenerAlertasMesActual pero mirando hacia atrás: para cada concepto
+ * esperado activo, recorre todos los meses desde el primer movimiento cargado en
+ * su caja (excluyendo el mes actual, que ya cubre la alerta de arriba) y señala
+ * los meses en los que no aparece — para rastrear que no se haya escapado ningún
+ * pago pendiente de meses anteriores. Cada hueco hay que confirmarlo (problema
+ * real a seguir) o justificarlo (ej. el contrato todavía no empezaba ese mes).
+ */
+export async function obtenerAlertasHistoricas(
+  estadoFiltro: EstadoAlertaHistorica = "pendientes"
+): Promise<AlertaHistorica[]> {
+  const conceptos = (await obtenerConceptosEsperados()).filter((c) => c.activo);
+  if (conceptos.length === 0) return [];
+
+  const mesActual = mesActualStr();
+
+  const cajaIdsConKeywords = [
+    ...new Set(conceptos.filter((c) => parsearPalabrasClave(c.palabrasClave).length > 0).map((c) => c.cajaId)),
+  ];
+
+  const [iniciosResult, titularResult, cuentaResult, resoluciones, indiceTexto] = await Promise.all([
+    db.execute<{ caja_id: number; mes_inicio: string }>(
+      sql`select caja_id, to_char(date_trunc('month', min(fecha)), 'YYYY-MM') as mes_inicio
+          from movimientos_caja group by caja_id`
+    ),
+    db.execute<{ caja_id: number; mes: string; cod_titular: number }>(
+      sql`select caja_id, to_char(date_trunc('month', fecha), 'YYYY-MM') as mes, cod_titular
+          from movimientos_caja where cod_titular is not null
+          group by caja_id, mes, cod_titular`
+    ),
+    db.execute<{ caja_id: number; mes: string; cod_cuenta: number }>(
+      sql`select caja_id, to_char(date_trunc('month', fecha), 'YYYY-MM') as mes, cod_cuenta
+          from movimientos_caja where cod_cuenta is not null
+          group by caja_id, mes, cod_cuenta`
+    ),
+    db.select().from(alertasHistoricasRevisadas),
+    construirIndiceTextoPorCajaMes(cajaIdsConKeywords),
+  ]);
+
+  const filasIniciar = Array.isArray(iniciosResult) ? iniciosResult : iniciosResult.rows;
+  const filasTitular = Array.isArray(titularResult) ? titularResult : titularResult.rows;
+  const filasCuenta = Array.isArray(cuentaResult) ? cuentaResult : cuentaResult.rows;
+
+  const inicioPorCaja = new Map(filasIniciar.map((r) => [Number(r.caja_id), r.mes_inicio]));
+  const setTitular = new Set(filasTitular.map((r) => `${r.caja_id}::${r.mes}::${r.cod_titular}`));
+  const setCuenta = new Set(filasCuenta.map((r) => `${r.caja_id}::${r.mes}::${r.cod_cuenta}`));
+  const resolucionPorClave = new Map(resoluciones.map((r) => [`${r.conceptoId}::${r.mes}`, r]));
+
+  const alertas: AlertaHistorica[] = [];
+  for (const c of conceptos) {
+    const mesInicio = inicioPorCaja.get(c.cajaId);
+    if (!mesInicio) continue;
+
+    for (const mes of mesesEntre(mesInicio, mesActual)) {
+      const presente =
+        c.codTitular !== null
+          ? setTitular.has(`${c.cajaId}::${mes}::${c.codTitular}`)
+          : c.codCuenta !== null
+            ? setCuenta.has(`${c.cajaId}::${mes}::${c.codCuenta}`)
+            : false;
+      if (presente) continue;
+      if (coincidePorTexto(indiceTexto, c.cajaId, mes, c.palabrasClave)) continue;
+
+      const resolucion = resolucionPorClave.get(`${c.id}::${mes}`);
+      alertas.push({
+        conceptoId: c.id,
+        cajaId: c.cajaId,
+        cajaNombre: c.cajaNombre,
+        nombre: c.nombre,
+        codTitular: c.codTitular,
+        codCuenta: c.codCuenta,
+        mes,
+        estado: (resolucion?.estado as "confirmado" | "justificado" | undefined) ?? "pendiente",
+        comentario: resolucion?.comentario ?? null,
+        usuarioEmail: resolucion?.usuarioEmail ?? null,
+        fechaResolucion: resolucion?.creadoEn ?? null,
+      });
+    }
+  }
+
+  alertas.sort((a, b) => (a.mes !== b.mes ? (a.mes < b.mes ? 1 : -1) : a.cajaNombre.localeCompare(b.cajaNombre)));
+
+  if (estadoFiltro === "todos") return alertas;
+  if (estadoFiltro === "pendientes") return alertas.filter((a) => a.estado === "pendiente");
+  if (estadoFiltro === "confirmados") return alertas.filter((a) => a.estado === "confirmado");
+  return alertas.filter((a) => a.estado === "justificado");
 }
 
 /** Fecha de la última vez que se importaron datos (local o SharePoint), para mostrar en el dashboard. */

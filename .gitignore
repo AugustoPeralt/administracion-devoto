@@ -18,6 +18,13 @@ archivosCopiaDeConsolidados/
 # (ver lib/alquileres/sincronizar-sharepoint.ts).
 archivosAlquileres/
 
+# Excels sueltos que caen en la raíz al trabajar (listas de precios, copias de
+# comprobantes, etc.) — son datos reales de proveedores/precios, nunca se
+# commitean. Si hace falta un fixture de verdad para tests, va en una carpeta
+# explícita, no en la raíz.
+*.xlsx
+*.xls
+
 # misc
 .DS_Store
 *.log
@@ -26,3 +33,6 @@ npm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*
