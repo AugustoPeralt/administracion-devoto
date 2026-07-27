@@ -1,0 +1,40 @@
+name: Sync Presentismo -> Nomina
+
+on:
+  schedule:
+    # 00:00 UTC = 21:00 ART (Argentina no tiene horario de verano, offset fijo -3)
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run (no escribe en SharePoint, solo loguea el resultado)"
+        type: boolean
+        default: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Sincronizar Presentismo -> Nomina
+        env:
+          AUTH_MICROSOFT_ENTRA_ID_ID: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_ID }}
+          AUTH_MICROSOFT_ENTRA_ID_SECRET: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_SECRET }}
+          AUTH_MICROSOFT_ENTRA_ID_ISSUER: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_ISSUER }}
+          SHAREPOINT_HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
+          SHAREPOINT_SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
+          SHAREPOINT_RRHH_PRESENTISMO_PATH: ${{ secrets.SHAREPOINT_RRHH_PRESENTISMO_PATH }}
+          SHAREPOINT_RRHH_NOMINA_PATH: ${{ secrets.SHAREPOINT_RRHH_NOMINA_PATH }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            npm run rrhh:sync:dry
+          else
+            npm run rrhh:sync
+          fi
