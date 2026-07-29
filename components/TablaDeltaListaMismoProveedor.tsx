@@ -1,15 +1,22 @@
 "use client";
 
-import type { FilaDeltaListaProveedor } from "@/lib/control-precios/consultas";
+import type { FilaDeltaListaProveedor, FilaSustituto } from "@/lib/control-precios/consultas";
 import { formatoFechaHora, formatoMoneda } from "@/lib/formato";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 export function TablaDeltaListaMismoProveedor({
   filas,
   umbralAlerta,
+  umbralRecomendacion,
+  proveedorId,
+  sustitutosPorListaId,
 }: {
   filas: FilaDeltaListaProveedor[];
   umbralAlerta: number;
+  umbralRecomendacion: number;
+  proveedorId: number;
+  sustitutosPorListaId: Map<number, FilaSustituto[]>;
 }) {
   const [busqueda, setBusqueda] = useState("");
 
@@ -56,11 +63,19 @@ export function TablaDeltaListaMismoProveedor({
                 <th className="px-3 py-2 text-right">Precio anterior</th>
                 <th className="px-3 py-2 text-right">Precio nuevo</th>
                 <th className="px-3 py-2 text-right">Variación</th>
+                <th className="px-3 py-2">Sustituto más barato</th>
               </tr>
             </thead>
             <tbody>
               {filasFiltradas.map((f) => (
-                <FilaDeltaLista key={f.codigoProveedor} f={f} umbralAlerta={umbralAlerta} />
+                <FilaDeltaLista
+                  key={f.codigoProveedor}
+                  f={f}
+                  umbralAlerta={umbralAlerta}
+                  umbralRecomendacion={umbralRecomendacion}
+                  proveedorId={proveedorId}
+                  sustitutos={f.listaVigenteId !== null ? sustitutosPorListaId.get(f.listaVigenteId) : undefined}
+                />
               ))}
             </tbody>
           </table>
@@ -70,10 +85,25 @@ export function TablaDeltaListaMismoProveedor({
   );
 }
 
-function FilaDeltaLista({ f, umbralAlerta }: { f: FilaDeltaListaProveedor; umbralAlerta: number }) {
+function FilaDeltaLista({
+  f,
+  umbralAlerta,
+  umbralRecomendacion,
+  proveedorId,
+  sustitutos,
+}: {
+  f: FilaDeltaListaProveedor;
+  umbralAlerta: number;
+  umbralRecomendacion: number;
+  proveedorId: number;
+  sustitutos: FilaSustituto[] | undefined;
+}) {
   const esAlerta = f.porcentajeVariacion >= umbralAlerta;
   const subioAlgo = f.porcentajeVariacion > 0;
   const bajoAlgo = f.porcentajeVariacion < 0;
+  const aumentoRelevante = f.porcentajeVariacion >= umbralRecomendacion;
+
+  const masBarato = sustitutos?.find((s) => s.porcentajeAhorro > 0);
 
   return (
     <tr className={`border-t border-slate-100 ${esAlerta ? "bg-rose-50" : ""}`}>
@@ -98,6 +128,28 @@ function FilaDeltaLista({ f, umbralAlerta }: { f: FilaDeltaListaProveedor; umbra
       >
         {f.porcentajeVariacion > 0 ? "+" : ""}
         {f.porcentajeVariacion}%
+      </td>
+      <td className="px-3 py-2">
+        {!aumentoRelevante ? (
+          <span className="text-xs text-slate-300">—</span>
+        ) : masBarato ? (
+          <div>
+            <div className="font-medium text-emerald-700">{masBarato.descripcion}</div>
+            <div className="text-xs text-slate-500">
+              <span className="font-mono tabular-nums">{formatoMoneda(masBarato.precio)}</span> · ahorro{" "}
+              {masBarato.porcentajeAhorro}%
+            </div>
+          </div>
+        ) : f.listaVigenteId !== null ? (
+          <Link
+            href={`/control-precios/comparacion/sustitutos?proveedor=${proveedorId}&producto=${f.listaVigenteId}`}
+            className="text-xs text-slate-500 underline hover:text-slate-900"
+          >
+            Buscar sustituto →
+          </Link>
+        ) : (
+          <span className="text-xs text-slate-300">—</span>
+        )}
       </td>
     </tr>
   );

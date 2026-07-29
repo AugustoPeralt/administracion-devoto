@@ -47,6 +47,26 @@ duplicar esa documentación acá, solo las reglas que cruzan varios archivos.
   entre catálogos de proveedores distintos (0 coincidencias exactas entre El
   Criollo y El Emporio, confirmado con datos reales) — la fusión o el par
   siempre lo confirma una persona.
+- **Sustitutos de producto (`cp_sustitutos_producto`)**: DENTRO del catálogo de
+  UN mismo proveedor, sugiere reemplazar un producto por otro más barato
+  cuando son "la misma variante, distinta marca" — nunca "el mismo producto,
+  distinta variante". La heurística vive en `sonSustitutosPorMarca()`
+  (`normalizar.ts`): exige que TODO el nombre coincida (categoría de peso/tamaño
+  incluida, con tolerancia — ver `extraerCantidad()`) salvo por palabras de
+  `MARCAS_CONOCIDAS`, una lista **deliberadamente incompleta y sesgada a favor
+  de falsos negativos** — si falta una marca real del catálogo agregarla ahí,
+  nunca aflojar la regla general para que "matchee más". Caso real que motivó
+  la regla: "Dulce de Leche Repostero Vacalín" es sustituto válido de
+  "... Milkaut" (misma variante, distinta marca), pero NO de "Dulce de Leche
+  Clásico Vacalín" (misma marca, pero variante distinta — no intercambiables).
+  A diferencia de los pares Criollo↔Emporio, acá NO hay paso de confirmación
+  manual (decisión del usuario, 2026-07-28: la heurística ya es lo bastante
+  estricta) — `scripts/generar-sugerencias-sustitutos.ts` genera candidatos y
+  se muestran directo, tanto en `/control-precios/comparacion/sustitutos` como
+  automáticamente en `/control-precios/comparacion/resultados` para cualquier
+  producto cuya variación de lista supere `UMBRAL_RECOMENDACION_SUSTITUTO` (1%,
+  `constantes.ts`) — ver `obtenerSustitutosParaListaIds`. Si una sugerencia
+  resulta estar mal, se descarta (borra la fila) en vez de "no confirmarla".
 - **Historial de listas de precios (`cp_listas_precios_importaciones`/`historial`)**:
   `cp_listas_precios_proveedor` sigue siendo "estado vigente" (se pisa en cada
   import, upsert por código). Desde 2026-07-27, cada import ADEMÁS graba un

@@ -717,3 +717,39 @@ export const cpParesPreciosProveedores = pgTable(
   },
   (t) => [uniqueIndex("cp_pares_precios_a_b_idx").on(t.listaAId, t.listaBId)]
 );
+
+/**
+ * Par "este producto puede reemplazarse por este otro más barato" — DENTRO del
+ * catálogo de UN MISMO proveedor (ej. Dulce de Leche Repostero Vacalín →
+ * Milkaut). A propósito NO es la misma tabla que cp_pares_precios_proveedores:
+ * esa relaciona "el mismo producto real" visto en dos proveedores distintos (para
+ * comparar precio del mismo ítem); esta relaciona DOS PRODUCTOS DISTINTOS que
+ * pueden sustituirse entre sí para bajar costo — mezclarlas haría ambiguo qué
+ * significa un registro. listaAId/listaBId no tienen un orden con significado
+ * (no hay "más caro" fijo de un lado) — la UI decide cuál es más barato al
+ * mostrarlo.
+ *
+ * A diferencia de cp_pares_precios_proveedores, NO hay paso de confirmación
+ * manual: sonSustitutosPorMarca() (normalizar.ts) es lo bastante estricta
+ * (exige coincidir todo el nombre salvo la marca) como para mostrar el
+ * resultado directo — decisión del usuario (2026-07-28), quiere ver la
+ * recomendación sin tener que revisarla a mano primero. `motivo` documenta
+ * por qué se generó el par, por si hace falta auditar una sugerencia rara;
+ * `eliminarSustituto()` (ver actions.ts) es la única forma de sacar un par
+ * que resultó estar mal.
+ */
+export const cpSustitutosProducto = pgTable(
+  "cp_sustitutos_producto",
+  {
+    id: serial("id").primaryKey(),
+    listaAId: integer("lista_a_id")
+      .notNull()
+      .references(() => cpListasPreciosProveedor.id, { onDelete: "cascade" }),
+    listaBId: integer("lista_b_id")
+      .notNull()
+      .references(() => cpListasPreciosProveedor.id, { onDelete: "cascade" }),
+    motivo: text("motivo"),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_sustitutos_producto_a_b_idx").on(t.listaAId, t.listaBId)]
+);

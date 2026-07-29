@@ -1,0 +1,1 @@
+ALTER TABLE "cp_sustitutos_producto" DROP COLUMN "confirmado";

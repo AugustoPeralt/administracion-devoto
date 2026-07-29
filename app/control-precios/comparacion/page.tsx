@@ -1,47 +1,40 @@
 import { EmparejarPreciosPanel } from "@/components/EmparejarPreciosPanel";
 import { ImportarListaPrecioForm } from "@/components/ImportarListaPrecioForm";
-import { SeccionColapsable } from "@/components/SeccionColapsable";
 import { SugerenciasPendientesPanel } from "@/components/SugerenciasPendientesPanel";
-import { TablaComparacionProveedores } from "@/components/TablaComparacionProveedores";
-import { TablaDeltaListaMismoProveedor } from "@/components/TablaDeltaListaMismoProveedor";
-import {
-  DESCUENTO_LISTA_EL_CRIOLLO,
-  NOMBRE_PROVEEDOR_EL_CRIOLLO,
-  UMBRAL_ALERTA_PRECIO,
-} from "@/lib/control-precios/constantes";
-import {
-  buscarProveedorIdPorNombre,
-  NOMBRE_PROVEEDOR_EL_EMPORIO,
-  obtenerComparacionCriolloEmporio,
-  obtenerDeltaListaMismoProveedor,
-  obtenerListasParaEmparejar,
-  obtenerSugerenciasPendientes,
-} from "@/lib/control-precios/consultas";
+import { obtenerListasParaEmparejar, obtenerSugerenciasPendientes } from "@/lib/control-precios/consultas";
+import Link from "next/link";
 import { importarListaElCriollo, importarListaElEmporio } from "./actions";
 
 export default async function ComparacionProveedoresPage() {
-  const [criolloId, emporioId] = await Promise.all([
-    buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_CRIOLLO),
-    buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_EMPORIO),
-  ]);
-
-  const [{ criollo, emporio }, comparacion, sugerencias, deltaCriollo, deltaEmporio] = await Promise.all([
+  const [{ criollo, emporio }, sugerencias] = await Promise.all([
     obtenerListasParaEmparejar(),
-    obtenerComparacionCriolloEmporio(),
     obtenerSugerenciasPendientes(),
-    obtenerDeltaListaMismoProveedor(criolloId, NOMBRE_PROVEEDOR_EL_CRIOLLO),
-    obtenerDeltaListaMismoProveedor(emporioId, NOMBRE_PROVEEDOR_EL_EMPORIO),
   ]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Comparación de proveedores</h1>
-        <p className="max-w-3xl text-sm text-slate-500">
-          Subí la lista de precios de El Criollo y de El Emporio, emparejá a mano qué producto de una es el mismo que
-          cuál de la otra, y compará precios — priorizando siempre el último precio real pagado por sobre el de
-          lista, cuando exista.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Comparación de proveedores</h1>
+          <p className="max-w-3xl text-sm text-slate-500">
+            Subí la lista de precios de El Criollo y de El Emporio, y emparejá a mano qué producto de una es el mismo
+            que cuál de la otra.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link
+            href="/control-precios/comparacion/resultados"
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Comparación de precios (Criollo ↔ Emporio) →
+          </Link>
+          <Link
+            href="/control-precios/comparacion/sustitutos"
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Buscar sustitutos más baratos →
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -55,14 +48,6 @@ export default async function ComparacionProveedoresPage() {
           extensionesAceptadas=".xls,.xlsx"
           accion={importarListaElEmporio}
         />
-      </div>
-
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-        Precio de El Criollo <strong>real ajustado</strong> (ya lo compraron): el precio_unitario de la factura solo
-        trae el 10% de descuento de lista — se le resta un 6% más para completar el {DESCUENTO_LISTA_EL_CRIOLLO}%
-        combinado que realmente paga El Criollo (el 6% adicional lo aplican sobre el total con IVA de la factura, no
-        por ítem, pero el precio mostrado ya lo tiene en cuenta). Precio <strong>estimado</strong> (sin compra real
-        todavía): se le resta directo el {DESCUENTO_LISTA_EL_CRIOLLO}% al precio de lista.
       </div>
 
       {sugerencias.length > 0 && (
@@ -84,26 +69,6 @@ export default async function ComparacionProveedoresPage() {
           <EmparejarPreciosPanel criollo={criollo} emporio={emporio} />
         </div>
       )}
-
-      <SeccionColapsable titulo="Comparación de precios — El Criollo ↔ El Emporio">
-        <TablaComparacionProveedores filas={comparacion} />
-      </SeccionColapsable>
-
-      <SeccionColapsable titulo="Variación de lista — El Criollo (última importación vs. anterior)" defaultAbierta={false}>
-        <p className="mb-2 max-w-3xl text-sm text-slate-500">
-          Solo productos vinculados a nuestro catálogo (los que ya compramos) — no se muestran renglones del
-          catálogo de El Criollo que no nos interesan. Ambos precios ya tienen descontado el{" "}
-          {DESCUENTO_LISTA_EL_CRIOLLO}% combinado de lista.
-        </p>
-        <TablaDeltaListaMismoProveedor filas={deltaCriollo} umbralAlerta={UMBRAL_ALERTA_PRECIO} />
-      </SeccionColapsable>
-
-      <SeccionColapsable titulo="Variación de lista — El Emporio (última importación vs. anterior)" defaultAbierta={false}>
-        <p className="mb-2 max-w-3xl text-sm text-slate-500">
-          Solo productos vinculados a nuestro catálogo (los que ya compramos) — precio con bonificación de lista.
-        </p>
-        <TablaDeltaListaMismoProveedor filas={deltaEmporio} umbralAlerta={UMBRAL_ALERTA_PRECIO} />
-      </SeccionColapsable>
     </div>
   );
 }

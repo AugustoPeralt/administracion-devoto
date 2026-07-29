@@ -23,6 +23,22 @@ export function precioRealAjustado(proveedorNombre: string, precioUnitario: numb
   return PROVEEDORES_CON_AJUSTE_10_6.includes(proveedorNombre) ? precioUnitario * FACTOR_PRECIO_REAL_ADICIONAL : precioUnitario;
 }
 
+/** Igual que precioRealAjustado(), pero para un precio de LISTA (cotización,
+ * no factura real) — El Criollo/HORECA no traen el 10% de descuento en su
+ * precio de lista (a diferencia del precio_unitario de factura), así que acá
+ * se resta directo el DESCUENTO_LISTA_EL_CRIOLLO combinado. Para el resto de
+ * los proveedores se usa precio_con_bonificacion si lo traen (ya es el precio
+ * final negociado), o el precio de lista tal cual si no. */
+export function precioListaAjustado(
+  proveedorNombre: string,
+  precioLista: string | number,
+  precioConBonificacion: string | number | null
+): number {
+  return PROVEEDORES_CON_AJUSTE_10_6.includes(proveedorNombre)
+    ? Number(precioLista) * (1 - DESCUENTO_LISTA_EL_CRIOLLO / 100)
+    : Number(precioConBonificacion ?? precioLista);
+}
+
 /** Resuelve el id de un proveedor por su nombre exacto — usado para identificar
  * a El Criollo/El Emporio en la comparación de proveedores sin hardcodear un id
  * numérico que puede diferir entre entornos. */
@@ -1015,6 +1031,12 @@ export type FilaDeltaListaProveedor = {
   fechaNueva: string;
   archivoNuevo: string;
   porcentajeVariacion: number;
+  /** Id vigente en cp_listas_precios_proveedor para este código — null si el
+   * código de la importación más reciente ya no está en la lista vigente
+   * (por ejemplo, se reimportó de nuevo después y ese código se dio de baja).
+   * Se usa para pedir sustitutos confirmados (ver obtenerSustitutosDeProducto)
+   * cuando el aumento supera UMBRAL_RECOMENDACION_SUSTITUTO. */
+  listaVigenteId: number | null;
 };
 
 type FilaDeltaListaCruda = {
@@ -1029,6 +1051,7 @@ type FilaDeltaListaCruda = {
   precioBonifNuevo: string | null;
   fechaNueva: string;
   archivoNuevo: string;
+  listaVigenteId: number | null;
 };
 
 /**
@@ -1079,25 +1102,22 @@ export async function obtenerDeltaListaMismoProveedor(
       ha.precio_lista AS "precioListaAnterior", ha.precio_con_bonificacion AS "precioBonifAnterior",
       an.importado_en AS "fechaAnterior", an.archivo_origen AS "archivoAnterior",
       hn.precio_lista AS "precioListaNuevo", hn.precio_con_bonificacion AS "precioBonifNuevo",
-      nv.importado_en AS "fechaNueva", nv.archivo_origen AS "archivoNuevo"
+      nv.importado_en AS "fechaNueva", nv.archivo_origen AS "archivoNuevo",
+      lp.id AS "listaVigenteId"
     FROM nueva nv
     CROSS JOIN anterior an
     JOIN cp_listas_precios_historial hn ON hn.importacion_id = nv.id
     JOIN cp_listas_precios_historial ha ON ha.importacion_id = an.id AND ha.codigo_proveedor = hn.codigo_proveedor
+    LEFT JOIN cp_listas_precios_proveedor lp
+      ON lp.proveedor_id = ${proveedorId} AND lp.codigo_proveedor = hn.codigo_proveedor
     WHERE hn.producto_id IS NOT NULL
     ORDER BY hn.categoria NULLS LAST, hn.descripcion
   `);
 
-  const aplicaAjuste = PROVEEDORES_CON_AJUSTE_10_6.includes(proveedorNombre);
-  const precioAjustado = (precioLista: string, precioBonif: string | null) =>
-    aplicaAjuste
-      ? Number(precioLista) * (1 - DESCUENTO_LISTA_EL_CRIOLLO / 100)
-      : Number(precioBonif ?? precioLista);
-
   return (resultado.rows as FilaDeltaListaCruda[])
     .map((f) => {
-      const precioAnterior = precioAjustado(f.precioListaAnterior, f.precioBonifAnterior);
-      const precioNuevo = precioAjustado(f.precioListaNuevo, f.precioBonifNuevo);
+      const precioAnterior = precioListaAjustado(proveedorNombre, f.precioListaAnterior, f.precioBonifAnterior);
+      const precioNuevo = precioListaAjustado(proveedorNombre, f.precioListaNuevo, f.precioBonifNuevo);
       const porcentajeVariacion =
         precioAnterior > 0 ? Math.round(((precioNuevo - precioAnterior) / precioAnterior) * 10000) / 100 : 0;
       return {
@@ -1111,8 +1131,138 @@ export async function obtenerDeltaListaMismoProveedor(
         fechaNueva: f.fechaNueva,
         archivoNuevo: f.archivoNuevo,
         porcentajeVariacion,
+        listaVigenteId: f.listaVigenteId,
       };
     })
     .sort((a, b) => b.porcentajeVariacion - a.porcentajeVariacion);
+}
+
+export type ProductoListaProveedor = {
+  id: number;
+  descripcion: string;
+  categoria: string | null;
+  precio: number;
+  proveedorId: number;
+  proveedorNombre: string;
+};
+
+type FilaProductoListaCruda = {
+  id: number;
+  descripcion: string;
+  categoria: string | null;
+  precioLista: string;
+  precioConBonificacion: string | null;
+  proveedorId: number;
+  proveedorNombre: string;
+};
+
+function mapearProductoLista(f: FilaProductoListaCruda): ProductoListaProveedor {
+  return {
+    id: f.id,
+    descripcion: f.descripcion,
+    categoria: f.categoria,
+    precio: precioListaAjustado(f.proveedorNombre, f.precioLista, f.precioConBonificacion),
+    proveedorId: f.proveedorId,
+    proveedorNombre: f.proveedorNombre,
+  };
+}
+
+/** Trae un renglón puntual de la lista vigente de un proveedor por id — usado
+ * para mostrar el producto elegido en la pantalla de sustitutos. */
+export async function obtenerProductoListaPorId(listaId: number): Promise<ProductoListaProveedor | null> {
+  const resultado = await db.execute(sql`
+    SELECT lp.id, lp.descripcion, lp.categoria,
+      lp.precio_lista AS "precioLista", lp.precio_con_bonificacion AS "precioConBonificacion",
+      prov.id AS "proveedorId", prov.nombre AS "proveedorNombre"
+    FROM cp_listas_precios_proveedor lp
+    JOIN cp_proveedores prov ON prov.id = lp.proveedor_id
+    WHERE lp.id = ${listaId}
+  `);
+  const fila = resultado.rows[0] as FilaProductoListaCruda | undefined;
+  return fila ? mapearProductoLista(fila) : null;
+}
+
+export type FilaSustituto = {
+  sustitutoId: number;
+  listaId: number;
+  descripcion: string;
+  categoria: string | null;
+  precio: number;
+  motivo: string | null;
+  porcentajeAhorro: number;
+};
+
+type FilaSustitutoCruda = FilaProductoListaCruda & {
+  sustitutoId: number;
+  motivo: string | null;
+};
+
+/**
+ * Sustitutos de un producto puntual de una lista de proveedor — ver
+ * cp_sustitutos_producto en db/schema.ts. Los candidatos se generan aparte
+ * con `scripts/generar-sugerencias-sustitutos.ts` (heurística de
+ * sonSustitutosPorMarca(), misma variante/distinta marca) — esta consulta
+ * solo LEE lo ya persistido, no calcula candidatos nuevos al vuelo. No hay
+ * paso de confirmación manual: se muestran directo (decisión del usuario,
+ * 2026-07-28) porque la heurística ya exige coincidencia estricta.
+ *
+ * `porcentajeAhorro` > 0 significa que el sustituto es más barato que el
+ * producto elegido (lo que le importa a quien está buscando bajar costo);
+ * negativo significa que en realidad es más caro — se muestra igual, por si
+ * la persona ya sabe que quiere ver ambos lados.
+ */
+export async function obtenerSustitutosDeProducto(listaId: number): Promise<FilaSustituto[]> {
+  const producto = await obtenerProductoListaPorId(listaId);
+  if (!producto) return [];
+
+  const resultado = await db.execute(sql`
+    SELECT sp.id AS "sustitutoId", sp.motivo,
+      otro.id AS "id", otro.descripcion, otro.categoria,
+      otro.precio_lista AS "precioLista", otro.precio_con_bonificacion AS "precioConBonificacion",
+      prov.id AS "proveedorId", prov.nombre AS "proveedorNombre"
+    FROM cp_sustitutos_producto sp
+    JOIN cp_listas_precios_proveedor otro
+      ON otro.id = CASE WHEN sp.lista_a_id = ${listaId} THEN sp.lista_b_id ELSE sp.lista_a_id END
+    JOIN cp_proveedores prov ON prov.id = otro.proveedor_id
+    WHERE sp.lista_a_id = ${listaId} OR sp.lista_b_id = ${listaId}
+  `);
+
+  return (resultado.rows as FilaSustitutoCruda[])
+    .map((f) => {
+      const otro = mapearProductoLista(f);
+      const porcentajeAhorro =
+        producto.precio > 0 ? Math.round(((producto.precio - otro.precio) / producto.precio) * 10000) / 100 : 0;
+      return {
+        sustitutoId: f.sustitutoId,
+        listaId: otro.id,
+        descripcion: otro.descripcion,
+        categoria: otro.categoria,
+        precio: otro.precio,
+        motivo: f.motivo,
+        porcentajeAhorro,
+      };
+    })
+    .sort((a, b) => b.porcentajeAhorro - a.porcentajeAhorro);
+}
+
+/**
+ * Sustitutos de varios productos a la vez, agrupados por listaId — usado en
+ * la tabla de "Variación de lista" para mostrar automáticamente una
+ * alternativa más barata al lado de cualquier producto que aumentó por
+ * encima de UMBRAL_RECOMENDACION_SUSTITUTO, sin pedirle a quien mira el
+ * reporte que vaya a buscarla a mano.
+ */
+export async function obtenerSustitutosParaListaIds(listaIds: number[]): Promise<Map<number, FilaSustituto[]>> {
+  const resultado = new Map<number, FilaSustituto[]>();
+  const idsValidos = listaIds.filter((id): id is number => id !== null && Number.isFinite(id));
+  if (idsValidos.length === 0) return resultado;
+
+  await Promise.all(
+    idsValidos.map(async (listaId) => {
+      const sustitutos = await obtenerSustitutosDeProducto(listaId);
+      if (sustitutos.length > 0) resultado.set(listaId, sustitutos);
+    })
+  );
+  return resultado;
 }
 

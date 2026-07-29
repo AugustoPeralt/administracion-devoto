@@ -8,6 +8,15 @@ export const CATEGORIAS_INSUMO = ["CARNE", "ALMACEN", "VERDULERIA", "BEBIBLES", 
 // exactamente lo mismo resaltado en los dos lugares.
 export const UMBRAL_ALERTA_PRECIO = 15;
 
+// A partir de este % de aumento entre una importación de lista de precios y la
+// anterior (ver obtenerDeltaListaMismoProveedor en consultas.ts), se buscan
+// automáticamente sustitutos más baratos del mismo proveedor para ese producto
+// (ver cp_sustitutos_producto) — deliberadamente mucho más bajo que
+// UMBRAL_ALERTA_PRECIO: acá no estamos resaltando un aumento grave, sino
+// ofreciendo una alternativa ante CUALQUIER aumento que valga la pena mirar.
+// Decisión del usuario (2026-07-28).
+export const UMBRAL_RECOMENDACION_SUSTITUTO = 1;
+
 // Tolerancia (en pesos) para considerar que el subtotal calculado (cantidad ×
 // precio_unitario − descuento) "coincide" con el subtotal impreso en el papel —
 // solo cubre redondeo de centavos, no una diferencia real. Ver
