@@ -317,12 +317,16 @@ export type FilaDeltaPrecio = {
 
 /**
  * Delta de precio unitario por producto + local dentro de [desde, hasta].
- * `precio_base` prioriza el último precio ANTES del período (¿subió respecto a la
- * última vez que se compró?); si no hay historia previa, cae al primer precio
- * observado dentro del propio período (sirve para ver la tendencia intra-quincena
- * cuando es la primera vez que se registra ese producto). Partido por local además
- * de por producto porque el mismo proveedor puede cobrarle distinto a cada
- * restaurante — ver comentario en cp_facturas.local_id.
+ * `precio_base` es SIEMPRE la primera compra dentro del propio período (busca
+ * hacia adelante desde `desde`, nunca hacia atrás) y `precio_actual` la última
+ * — nunca se mira una factura anterior a `desde`, aunque exista. Antes esta
+ * consulta priorizaba el último precio ANTES del período si había uno (para
+ * detectar un aumento que ya se hubiera aplicado a toda la ventana filtrada),
+ * pero eso hacía que filtrar "desde el 1 de junio" terminara comparando contra
+ * una factura de mayo — decisión del usuario (2026-07-29): filtrar desde una
+ * fecha tiene que respetarse como piso, no como sugerencia. Partido por local
+ * además de por producto porque el mismo proveedor puede cobrarle distinto a
+ * cada restaurante — ver comentario en cp_facturas.local_id.
  */
 export async function obtenerDeltaPrecios(
   filtros: FiltrosReporte,
@@ -332,15 +336,7 @@ export async function obtenerDeltaPrecios(
   const localIdsLit = literalArrayInt(localIds);
 
   const resultado = await ejecutor.execute(sql`
-    WITH ultimo_antes AS (
-      SELECT DISTINCT ON (df.producto_id, f.local_id)
-        df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha
-      FROM cp_detalle_facturas df
-      JOIN cp_facturas f ON f.id = df.factura_id
-      WHERE df.precio_unitario IS NOT NULL AND f.fecha_emision < ${desde}
-      ORDER BY df.producto_id, f.local_id, f.fecha_emision DESC
-    ),
-    primero_periodo AS (
+    WITH primero_periodo AS (
       SELECT DISTINCT ON (df.producto_id, f.local_id)
         df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha
       FROM cp_detalle_facturas df
@@ -369,18 +365,16 @@ export async function obtenerDeltaPrecios(
       up.categoria AS "categoria",
       up.local_id AS "localId",
       loc.nombre AS "localNombre",
-      COALESCE(ua.precio, pp.precio) AS "precioBase",
-      COALESCE(ua.fecha, pp.fecha) AS "fechaBase",
+      pp.precio AS "precioBase",
+      pp.fecha AS "fechaBase",
       up.precio AS "precioActual",
       up.fecha AS "fechaActual",
       CASE
-        WHEN COALESCE(ua.precio, pp.precio) IS NOT NULL AND COALESCE(ua.precio, pp.precio) > 0
-          AND up.precio IS DISTINCT FROM COALESCE(ua.precio, pp.precio)
-        THEN ROUND(((up.precio - COALESCE(ua.precio, pp.precio)) / COALESCE(ua.precio, pp.precio)) * 100, 2)
+        WHEN pp.precio IS NOT NULL AND pp.precio > 0 AND up.precio IS DISTINCT FROM pp.precio
+        THEN ROUND(((up.precio - pp.precio) / pp.precio) * 100, 2)
         ELSE NULL
       END AS "porcentajeAumento"
     FROM ultimo_periodo up
-    LEFT JOIN ultimo_antes ua ON ua.producto_id = up.producto_id AND ua.local_id IS NOT DISTINCT FROM up.local_id
     LEFT JOIN primero_periodo pp ON pp.producto_id = up.producto_id AND pp.local_id IS NOT DISTINCT FROM up.local_id
     LEFT JOIN alq_locales loc ON loc.id = up.local_id
     WHERE (${localIdsLit}::int[] IS NULL OR up.local_id = ANY(${localIdsLit}::int[]))
