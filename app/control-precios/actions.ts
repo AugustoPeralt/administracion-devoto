@@ -558,19 +558,34 @@ async function resolverPrecioVerduleria(
   return referencia ? Number(referencia.precioUnitario) : null;
 }
 
+export type ResultadoConfirmarFactura =
+  | { ok: true; facturaId: number; pendienteRevision: boolean; posibleDuplicado: string | null }
+  | { ok: false; error: string };
+
 /**
  * Persiste la factura ya validada/corregida por el usuario. La factura queda en
  * 'pendiente_revision' si algún ítem se quedó sin precio (típicamente VERDULERIA sin
  * match en el Excel de 5cynar) — nunca se bloquea la carga del resto por eso.
+ *
+ * Devuelve `{ ok: false, error }` en vez de lanzar una excepción para los casos
+ * esperados (factura duplicada, fecha rara, etc.) — Next.js 16 redacta el
+ * mensaje de cualquier `throw` de una Server Action en producción (buena
+ * práctica de seguridad, pero nos tapaba a nosotros mismos el mensaje claro que
+ * el usuario necesita ver para corregir el problema). Solo dejar `throw` para
+ * errores realmente inesperados (bugs), donde SÍ queremos el mensaje genérico.
  */
-export async function confirmarFactura(datos: FacturaExtraidaIA, archivoRef: string, localId: number | null) {
+export async function confirmarFactura(
+  datos: FacturaExtraidaIA,
+  archivoRef: string,
+  localId: number | null
+): Promise<ResultadoConfirmarFactura> {
   await requerirSesion();
 
   const proveedorNombre = datos.proveedor_nombre?.trim();
-  if (!proveedorNombre) throw new Error("Falta el nombre del proveedor.");
-  if (!datos.fecha_emision) throw new Error("Falta la fecha de emisión.");
+  if (!proveedorNombre) return { ok: false, error: "Falta el nombre del proveedor." };
+  if (!datos.fecha_emision) return { ok: false, error: "Falta la fecha de emisión." };
   if (!Array.isArray(datos.items) || datos.items.length === 0) {
-    throw new Error("La factura no tiene ítems.");
+    return { ok: false, error: "La factura no tiene ítems." };
   }
 
   // Bloqueo duro: la IA a veces confunde un dígito del año al leer fotos de mala
@@ -585,18 +600,22 @@ export async function confirmarFactura(datos: FacturaExtraidaIA, archivoRef: str
   const anioActual = hoy.getFullYear();
   const anioFactura = Number(datos.fecha_emision.slice(0, 4));
   if (anioFactura !== anioActual) {
-    throw new Error(
-      `La fecha de emisión leída es ${datos.fecha_emision} (año ${anioFactura}), pero estamos en ${anioActual}. ` +
-        `Seguramente la IA confundió un dígito del año al leer la foto — corregí la fecha antes de confirmar.`
-    );
+    return {
+      ok: false,
+      error:
+        `La fecha de emisión leída es ${datos.fecha_emision} (año ${anioFactura}), pero estamos en ${anioActual}. ` +
+        `Seguramente la IA confundió un dígito del año al leer la foto — corregí la fecha antes de confirmar.`,
+    };
   }
   const hoyISO = `${anioActual}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
   if (datos.fecha_emision > hoyISO) {
-    throw new Error(
-      `La fecha de emisión leída es ${datos.fecha_emision}, posterior a hoy (${hoyISO}) — una factura ya recibida ` +
+    return {
+      ok: false,
+      error:
+        `La fecha de emisión leída es ${datos.fecha_emision}, posterior a hoy (${hoyISO}) — una factura ya recibida ` +
         `no puede tener fecha futura. Seguramente la IA confundió un dígito del día o del mes — corregí la fecha ` +
-        `antes de confirmar.`
-    );
+        `antes de confirmar.`,
+    };
   }
 
   const { id: proveedorId, posibleDuplicado } = await buscarOCrearProveedor({
@@ -610,7 +629,7 @@ export async function confirmarFactura(datos: FacturaExtraidaIA, archivoRef: str
     .from(cpProveedores)
     .where(eq(cpProveedores.id, proveedorId))
     .limit(1);
-  if (!proveedor) throw new Error("No se pudo resolver el proveedor.");
+  if (!proveedor) return { ok: false, error: "No se pudo resolver el proveedor." };
 
   const numeroFactura = datos.numero_factura?.trim() || null;
   // Chequeo pensado para cargas de facturas viejas en lote, donde es fácil
@@ -641,11 +660,13 @@ export async function confirmarFactura(datos: FacturaExtraidaIA, archivoRef: str
       const proporcionRepetida = itemsValidos.length > 0 ? repetidos.length / itemsValidos.length : 0;
 
       if (proporcionRepetida > 0.5) {
-        throw new Error(
-          `Esta factura ya está cargada: "${proveedorNombre}" ya tiene el comprobante N° ${numeroFactura} con ` +
+        return {
+          ok: false,
+          error:
+            `Esta factura ya está cargada: "${proveedorNombre}" ya tiene el comprobante N° ${numeroFactura} con ` +
             `los mismos productos (factura #${yaCargada.id}, del ${yaCargada.fechaEmision}). Si en realidad es ` +
-            `otra página del mismo comprobante con productos distintos, revisá que los nombres se hayan leído bien.`
-        );
+            `otra página del mismo comprobante con productos distintos, revisá que los nombres se hayan leído bien.`,
+        };
       }
       // Si los productos son mayormente distintos, se deja pasar: es otra
       // página del mismo número de comprobante, y se guarda como una factura
@@ -721,7 +742,7 @@ export async function confirmarFactura(datos: FacturaExtraidaIA, archivoRef: str
     });
   }
 
-  if (detalle.length === 0) throw new Error("Ningún ítem de la factura pudo procesarse.");
+  if (detalle.length === 0) return { ok: false, error: "Ningún ítem de la factura pudo procesarse." };
 
   const [factura] = await db
     .insert(cpFacturas)
@@ -740,7 +761,7 @@ export async function confirmarFactura(datos: FacturaExtraidaIA, archivoRef: str
 
   revalidatePath("/control-precios");
 
-  return { facturaId: factura.id, pendienteRevision: facturaIncompleta, posibleDuplicado };
+  return { ok: true, facturaId: factura.id, pendienteRevision: facturaIncompleta, posibleDuplicado };
 }
 
 export type ItemReanalisis = {

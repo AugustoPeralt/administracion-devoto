@@ -249,6 +249,10 @@ export function CargaComprobanteForm({ locales }: { locales: { id: number; nombr
     actualizarItem(id, { estado: "guardando", error: null });
     try {
       const res = await confirmarFactura(item.factura, item.archivoRef, localId);
+      if (!res.ok) {
+        actualizarItem(id, { estado: "validando", error: res.error });
+        return;
+      }
       actualizarItem(id, {
         estado: "guardado",
         facturaId: res.facturaId,
