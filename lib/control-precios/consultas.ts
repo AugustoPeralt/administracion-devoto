@@ -8,6 +8,7 @@ import {
   DIAS_MAX_DIFERENCIA_COMPARACION_RESTAURANTES,
   FACTOR_PRECIO_REAL_ADICIONAL,
   NOMBRE_PROVEEDOR_EL_CRIOLLO,
+  NOMBRE_PROVEEDOR_HORECA,
   PROVEEDORES_CON_AJUSTE_10_6,
   TOLERANCIA_SUBTOTAL,
 } from "@/lib/control-precios/constantes";
@@ -845,17 +846,31 @@ export async function obtenerListasParaEmparejar(): Promise<{
     buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_EMPORIO),
   ]);
 
+  // DISTINCT ON (lp.id): un renglón de El Emporio puede tener MÁS DE UN par
+  // confirmado del lado de El Criollo cuando varias marcas de El Criollo se
+  // comparan contra el mismo renglón genérico de El Emporio (ej. "PISTACHO
+  // PELADO 1KG" sin marca propia, emparejado con "PISTACHO ... CUMANA" Y con
+  // "PISTACHO ... LOS VALLES" — ambos pares son válidos para la comparación de
+  // precios, ver obtenerComparacionCriolloEmporio). Sin este DISTINCT ON, el
+  // LEFT JOIN fanea ese renglón en dos filas con el mismo `id`, y la pantalla
+  // de emparejar (que asume una fila por renglón) revienta con productos
+  // duplicados/keys de React repetidas. Acá solo mostramos el par MÁS
+  // RECIENTE de los que compitan — no borra ni afecta a los demás pares.
   const resultado = await db.execute(sql`
-    SELECT lp.id, lp.proveedor_id AS "proveedorId", lp.codigo_proveedor AS "codigoProveedor",
-      lp.descripcion, lp.presentacion, lp.categoria,
-      lp.precio_lista AS "precioLista", lp.precio_con_bonificacion AS "precioConBonificacion",
-      CASE WHEN par.lista_a_id = lp.id THEN par.lista_b_id ELSE par.lista_a_id END AS "parLadoId",
-      par.id AS "parId"
-    FROM cp_listas_precios_proveedor lp
-    LEFT JOIN cp_pares_precios_proveedores par
-      ON (par.lista_a_id = lp.id OR par.lista_b_id = lp.id) AND par.confirmado = true
-    WHERE lp.proveedor_id IN (${criolloId}, ${emporioId})
-    ORDER BY lp.categoria NULLS LAST, lp.descripcion
+    SELECT * FROM (
+      SELECT DISTINCT ON (lp.id)
+        lp.id, lp.proveedor_id AS "proveedorId", lp.codigo_proveedor AS "codigoProveedor",
+        lp.descripcion, lp.presentacion, lp.categoria,
+        lp.precio_lista AS "precioLista", lp.precio_con_bonificacion AS "precioConBonificacion",
+        CASE WHEN par.lista_a_id = lp.id THEN par.lista_b_id ELSE par.lista_a_id END AS "parLadoId",
+        par.id AS "parId"
+      FROM cp_listas_precios_proveedor lp
+      LEFT JOIN cp_pares_precios_proveedores par
+        ON (par.lista_a_id = lp.id OR par.lista_b_id = lp.id) AND par.confirmado = true
+      WHERE lp.proveedor_id IN (${criolloId}, ${emporioId})
+      ORDER BY lp.id, par.creado_en DESC NULLS LAST
+    ) sub
+    ORDER BY categoria NULLS LAST, descripcion
   `);
 
   type Fila = FilaListaParaEmparejar & { proveedorId: number };
@@ -879,6 +894,10 @@ export type FilaComparacionProveedores = {
   fechaEmporio: string | null;
   masBarato: "criollo" | "emporio" | "igual";
   porcentajeDiferencia: number;
+  /** true si es el mismo producto real pero de una marca distinta a cada
+   * lado (ver columna distinta_marca) — se usa para darle menor prioridad en
+   * el export a Excel, nunca para excluir la fila. */
+  distintaMarca: boolean;
 };
 
 type FilaParCriolloEmporioCruda = {
@@ -894,13 +913,17 @@ type FilaParCriolloEmporioCruda = {
   precioRealEmporio: string | null;
   fechaEmporio: string | null;
   motivo: string | null;
+  distintaMarca: boolean;
 };
 
 /** Trae los pares Criollo↔Emporio (confirmados o sugerencias pendientes, según
- * `confirmado`) con el último precio real de cada lado, si existe. Compartida
- * por obtenerComparacionCriolloEmporio() y obtenerSugerenciasPendientes() para
- * no duplicar el join — la única diferencia entre ambas es el filtro sobre
- * `confirmado` y si se expone `motivo`. */
+ * `confirmado`) con el último precio real de cada lado, si existe — del lado
+ * Criollo, incluye como real también una compra facturada a HORECA SRL si
+ * coincide el nombre exacto (ver `ultimo_precio_real_horeca_por_nombre` en el
+ * query). Compartida por obtenerComparacionCriolloEmporio() y
+ * obtenerSugerenciasPendientes() para no duplicar el join — la única
+ * diferencia entre ambas es el filtro sobre `confirmado` y si se expone
+ * `motivo`. */
 async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParCriolloEmporioCruda[]> {
   const [criolloId, emporioId] = await Promise.all([
     buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_CRIOLLO),
@@ -910,7 +933,7 @@ async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParC
   const resultado = await db.execute(sql`
     WITH pares_normalizados AS (
       SELECT
-        par.id AS par_id, par.motivo AS motivo,
+        par.id AS par_id, par.motivo AS motivo, par.distinta_marca AS distinta_marca,
         CASE WHEN la.proveedor_id = ${criolloId} THEN la.id ELSE lb.id END AS criollo_lista_id,
         CASE WHEN la.proveedor_id = ${emporioId} THEN la.id ELSE lb.id END AS emporio_lista_id
       FROM cp_pares_precios_proveedores par
@@ -924,11 +947,45 @@ async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParC
       JOIN cp_facturas f ON f.id = df.factura_id
       WHERE df.precio_unitario IS NOT NULL
       ORDER BY df.producto_id, f.fecha_emision DESC
+    ),
+    -- El Criollo y HORECA SRL son en los hechos el mismo distribuidor real —
+    -- confirmado con el usuario (2026-07-30) tras ver que ~87% del catálogo de
+    -- HORECA matchea nombre exacto con renglones de la lista de El Criollo:
+    -- algunas facturas se cargan a nombre de HORECA para el mismo producto. Si
+    -- un renglón de El Criollo no tiene compra real propia, se busca acá una
+    -- compra real de HORECA con el nombre EXACTO (mismo criterio que usa el
+    -- resto del sistema para vincular producto_id automáticamente, sin
+    -- matching difuso) — nunca al revés (HORECA no se compara contra Emporio).
+    ultimo_precio_real_horeca_por_nombre AS (
+      SELECT DISTINCT ON (lower(prod.nombre)) lower(prod.nombre) AS nombre_normalizado,
+        df.precio_unitario, f.fecha_emision
+      FROM cp_detalle_facturas df
+      JOIN cp_facturas f ON f.id = df.factura_id
+      JOIN cp_productos prod ON prod.id = df.producto_id
+      JOIN cp_proveedores prov ON prov.id = prod.proveedor_id
+      WHERE df.precio_unitario IS NOT NULL AND prov.nombre = ${NOMBRE_PROVEEDOR_HORECA}
+      ORDER BY lower(prod.nombre), f.fecha_emision DESC
     )
     SELECT
-      pn.par_id AS "parId", pn.motivo AS "motivo",
+      pn.par_id AS "parId", pn.motivo AS "motivo", pn.distinta_marca AS "distintaMarca",
       lc.descripcion AS "nombreCriollo", lc.categoria AS "categoria", lc.precio_lista AS "precioListaCriollo",
-      upc.precio_unitario AS "precioRealCriollo", upc.fecha_emision AS "fechaCriollo",
+      -- Entre la compra real directa de El Criollo y la de HORECA con el mismo
+      -- nombre, gana la más reciente (mismo criterio "último precio real
+      -- pagado" que ya aplica el resto de esta consulta) — no siempre la
+      -- directa, porque el nombre pudo dejar de comprarse a El Criollo y
+      -- seguir comprándose a HORECA, o viceversa.
+      CASE
+        WHEN upc.fecha_emision IS NULL THEN uph.precio_unitario
+        WHEN uph.fecha_emision IS NULL THEN upc.precio_unitario
+        WHEN uph.fecha_emision > upc.fecha_emision THEN uph.precio_unitario
+        ELSE upc.precio_unitario
+      END AS "precioRealCriollo",
+      CASE
+        WHEN upc.fecha_emision IS NULL THEN uph.fecha_emision
+        WHEN uph.fecha_emision IS NULL THEN upc.fecha_emision
+        WHEN uph.fecha_emision > upc.fecha_emision THEN uph.fecha_emision
+        ELSE upc.fecha_emision
+      END AS "fechaCriollo",
       le.descripcion AS "nombreEmporio",
       le.precio_lista AS "precioListaEmporio", le.precio_con_bonificacion AS "precioBonifEmporio",
       upe.precio_unitario AS "precioRealEmporio", upe.fecha_emision AS "fechaEmporio"
@@ -936,6 +993,7 @@ async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParC
     JOIN cp_listas_precios_proveedor lc ON lc.id = pn.criollo_lista_id
     JOIN cp_listas_precios_proveedor le ON le.id = pn.emporio_lista_id
     LEFT JOIN ultimo_precio_real upc ON upc.producto_id = lc.producto_id
+    LEFT JOIN ultimo_precio_real_horeca_por_nombre uph ON uph.nombre_normalizado = lower(lc.descripcion)
     LEFT JOIN ultimo_precio_real upe ON upe.producto_id = le.producto_id
     ORDER BY lc.categoria NULLS LAST, lc.descripcion
   `);
@@ -974,6 +1032,7 @@ function calcularComparacion(r: FilaParCriolloEmporioCruda): FilaComparacionProv
     fechaEmporio: r.fechaEmporio,
     masBarato,
     porcentajeDiferencia: Math.round(porcentajeDiferencia * 100) / 100,
+    distintaMarca: r.distintaMarca,
   };
 }
 

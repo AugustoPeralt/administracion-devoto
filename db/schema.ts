@@ -713,6 +713,14 @@ export const cpParesPreciosProveedores = pgTable(
     // texto pero compite con otro candidato", "tamaño de envase distinto") —
     // para que quien revise la sugerencia no tenga que adivinar el motivo.
     motivo: text("motivo"),
+    // true cuando el par es el mismo producto real pero de una marca distinta
+    // a cada lado (ej. "Ajíes en vinagre Reygal" vs "Chiro") — a diferencia de
+    // `motivo`, que arrastra el texto de la sugerencia original y no se limpia
+    // al confirmar (ver confirmarSugerencia en actions.ts), este flag lo
+    // fija a mano quien confirma el par y sirve para dar menor prioridad a
+    // estas filas en el reporte Excel (ver exportar-reporte/route.ts) sin
+    // pisar/depender del texto de `motivo`. Decisión del usuario (2026-07-30).
+    distintaMarca: boolean("distinta_marca").notNull().default(false),
     creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("cp_pares_precios_a_b_idx").on(t.listaAId, t.listaBId)]

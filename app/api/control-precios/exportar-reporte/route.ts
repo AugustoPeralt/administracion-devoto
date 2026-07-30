@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import {
+  obtenerComparacionCriolloEmporio,
   obtenerDeltaPrecios,
   obtenerGastoPorCategoria,
   obtenerGastoTotalPeriodo,
@@ -9,8 +10,9 @@ import {
   quincenaActual,
   type FiltrosReporte,
 } from "@/lib/control-precios/consultas";
-import { UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
+import { DESCUENTO_LISTA_EL_CRIOLLO, UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
+import { formatoFecha } from "@/lib/formato";
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 
@@ -19,6 +21,10 @@ const COLOR_ALERTA_LEVE = "FFFEF3C7"; // ámbar claro — aumento notorio pero p
 const COLOR_SIN_VERIFICAR = "FFFEF3C7"; // mismo ámbar — plata que no se pudo comprobar contra el papel
 const COLOR_ENCABEZADO = "FF0F172A"; // slate-950, igual que el resto de la UI
 const COLOR_TEXTO_ALERTA = "FFB91C1C"; // rojo-700, para que el % se lea aunque se imprima en blanco y negro
+const COLOR_TEXTO_CRIOLLO = "FF059669"; // emerald-600, mismo color que "Conviene: Criollo" en la pantalla
+const COLOR_TEXTO_EMPORIO = "FF0284C7"; // sky-600, mismo color que "Conviene: Emporio" en la pantalla
+const COLOR_FILA_MARCA_DISTINTA = "FFF1F5F9"; // slate-100 — gris parejo para toda la fila, para que se note de un vistazo sin tener que leer la columna
+const COLOR_ENCABEZADO_SECCION = "FFE2E8F0"; // slate-200 — separador de sección, más claro que el encabezado de la tabla
 const FORMATO_FECHA = "dd/mm/yyyy";
 const TOP_AUMENTOS_CANTIDAD = 10;
 
@@ -52,7 +58,7 @@ export async function GET(request: Request) {
     categoria: (categoriaParam as CategoriaInsumo | null) || undefined,
   };
 
-  const [deltas, gastoTotal, gastoPorCategoria, historialCompras] = await Promise.all([
+  const [deltas, gastoTotal, gastoPorCategoria, historialCompras, comparacionCriolloEmporio] = await Promise.all([
     obtenerDeltaPrecios(filtros),
     obtenerGastoTotalPeriodo(filtros),
     obtenerGastoPorCategoria(filtros),
@@ -61,6 +67,9 @@ export async function GET(request: Request) {
     // distinta, no tiene sentido mezclar su consumo a la hora de decidir
     // proveedores. Ver comentario en la función.
     obtenerHistorialComprasPorProducto(filtros, true),
+    // No depende de desde/hasta: es el mismo par confirmado vigente que se ve
+    // en /control-precios/comparacion/resultados, no un corte por período.
+    obtenerComparacionCriolloEmporio(),
   ]);
 
   const workbook = new ExcelJS.Workbook();
@@ -138,6 +147,82 @@ export async function GET(request: Request) {
     resumen.getColumn(5).width = 15;
     resumen.getColumn(6).width = 14;
     resumen.getColumn(7).width = 12;
+  }
+
+  // Mismos pares CONFIRMADOS y mismo cálculo que /control-precios/comparacion/resultados
+  // (obtenerComparacionCriolloEmporio) — precio vigente al momento de generar el
+  // Excel, no un corte histórico. "real ajustado"/"estimado" y sus fechas se
+  // muestran igual que en pantalla para que quien lo lea sepa si el precio sale
+  // de una compra real o de la lista sin comprar todavía.
+  const comparacion = workbook.addWorksheet("Comparación Criollo-Emporio");
+  comparacion.columns = [
+    { header: "Categoría", key: "categoria", width: 14 },
+    { header: "Producto (El Criollo)", key: "productoCriollo", width: 36 },
+    { header: "Precio Criollo", key: "precioCriollo", width: 15 },
+    { header: "Origen Criollo", key: "origenCriollo", width: 22 },
+    { header: "Producto (El Emporio)", key: "productoEmporio", width: 36 },
+    { header: "Precio Emporio", key: "precioEmporio", width: 15 },
+    { header: "Origen Emporio", key: "origenEmporio", width: 22 },
+    { header: "Conviene", key: "conviene", width: 14 },
+    { header: "% Diferencia", key: "diferencia", width: 12 },
+    { header: "Coincidencia", key: "coincidencia", width: 16 },
+  ];
+  comparacion.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  comparacion.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_ENCABEZADO } };
+  comparacion.views = [{ state: "frozen", ySplit: 1 }];
+  comparacion.autoFilter = { from: "A1", to: "J1" };
+  comparacion.getCell("J1").note =
+    "Exacta: mismo producto, mismo fabricante.\n" +
+    "Distinta marca: mismo producto real, pero cada proveedor lo trae de un fabricante distinto — fila sombreada en gris, menor prioridad/confianza que las filas exactas.";
+
+  // Prioridad pedida por el usuario (2026-07-30): primero los pares que son el
+  // mismo producto exacto, recién después los que son el mismo producto pero
+  // de una marca distinta a cada lado (distintaMarca=true) — Array.sort es
+  // estable, así que dentro de cada grupo se conserva el orden por
+  // categoría/nombre que ya trae comparacionCriolloEmporio.
+  const filasOrdenadas = [...comparacionCriolloEmporio].sort(
+    (a, b) => Number(a.distintaMarca) - Number(b.distintaMarca)
+  );
+
+  for (const c of filasOrdenadas) {
+    const fila = comparacion.addRow({
+      categoria: c.categoria,
+      productoCriollo: c.nombreCriollo,
+      precioCriollo: c.precioCriollo,
+      origenCriollo: c.esEstimadoCriollo
+        ? `estimado (lista −${DESCUENTO_LISTA_EL_CRIOLLO}%)`
+        : c.fechaCriollo
+          ? `real ajustado, ${formatoFecha(c.fechaCriollo)}`
+          : "real ajustado",
+      productoEmporio: c.nombreEmporio,
+      precioEmporio: c.precioEmporio,
+      origenEmporio: c.esEstimadoEmporio
+        ? "estimado (c/bonif de lista)"
+        : c.fechaEmporio
+          ? `real, ${formatoFecha(c.fechaEmporio)}`
+          : "real",
+      conviene:
+        c.masBarato === "igual" ? "igual" : c.masBarato === "criollo" ? "Criollo" : "Emporio",
+      diferencia: c.masBarato === "igual" ? 0 : c.porcentajeDiferencia / 100,
+      coincidencia: c.distintaMarca ? "Distinta marca" : "Exacta",
+    });
+    fila.getCell("precioCriollo").numFmt = '"$"#,##0';
+    fila.getCell("precioEmporio").numFmt = '"$"#,##0';
+    fila.getCell("diferencia").numFmt = "0.00%";
+    // Fila entera sombreada (no solo la columna "Coincidencia") para que se
+    // note de un vistazo scrolleando que este tramo es de menor confianza —
+    // mismo criterio de "resaltar toda la fila" que ya usan COLOR_ALERTA/
+    // COLOR_SIN_VERIFICAR más abajo en este archivo. No se usa un separador
+    // de fila en blanco porque rompería el autoFilter/orden de Excel.
+    if (c.distintaMarca) {
+      fila.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_FILA_MARCA_DISTINTA } };
+      fila.getCell("coincidencia").font = { italic: true, bold: true, color: { argb: "FF475569" } };
+    }
+    if (c.masBarato !== "igual") {
+      const color = c.masBarato === "criollo" ? COLOR_TEXTO_CRIOLLO : COLOR_TEXTO_EMPORIO;
+      fila.getCell("conviene").font = { bold: true, color: { argb: color } };
+      fila.getCell("diferencia").font = { bold: true, color: { argb: color } };
+    }
   }
 
   const precios = workbook.addWorksheet("Precios");
