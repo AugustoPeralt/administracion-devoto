@@ -9,9 +9,9 @@ type FiltroTipo = "todos" | "real_vs_estimado" | "ambos_reales" | "ambos_estimad
 
 const OPCIONES_FILTRO: { valor: FiltroTipo; etiqueta: string }[] = [
   { valor: "todos", etiqueta: "Todos" },
-  { valor: "real_vs_estimado", etiqueta: "Real vs. estimado (lo que ya pedimos)" },
-  { valor: "ambos_reales", etiqueta: "Ambos reales (se lo compramos a los dos)" },
-  { valor: "ambos_estimados", etiqueta: "Ambos estimados (no le compramos a ninguno)" },
+  { valor: "real_vs_estimado", etiqueta: "Comprado a uno solo de los dos" },
+  { valor: "ambos_reales", etiqueta: "Comprado a los dos" },
+  { valor: "ambos_estimados", etiqueta: "No comprado a ninguno todavía" },
 ];
 
 function coincideFiltro(f: FilaComparacionProveedores, filtro: FiltroTipo): boolean {
@@ -107,21 +107,15 @@ function FilaComparacion({ f }: { f: FilaComparacionProveedores }) {
       <td className="whitespace-nowrap px-3 py-2 text-right">
         <div className="font-mono tabular-nums text-slate-900">{formatoMoneda(f.precioCriollo)}</div>
         <div className="text-xs text-slate-400">
-          {f.esEstimadoCriollo
-            ? `estimado (lista −${DESCUENTO_LISTA_EL_CRIOLLO}%)`
-            : f.fechaCriollo
-              ? `real ajustado, ${formatoFecha(f.fechaCriollo)}`
-              : "real ajustado"}
+          lista vigente (−{DESCUENTO_LISTA_EL_CRIOLLO}%)
+          {f.esEstimadoCriollo ? ", nunca comprado" : f.fechaCriollo ? `, compra real ${formatoFecha(f.fechaCriollo)}` : ", ya comprado"}
         </div>
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
         <div className="font-mono tabular-nums text-slate-900">{formatoMoneda(f.precioEmporio)}</div>
         <div className="text-xs text-slate-400">
-          {f.esEstimadoEmporio
-            ? "estimado (c/bonif de lista)"
-            : f.fechaEmporio
-              ? `real, ${formatoFecha(f.fechaEmporio)}`
-              : "real"}
+          lista vigente
+          {f.esEstimadoEmporio ? ", nunca comprado" : f.fechaEmporio ? `, compra real ${formatoFecha(f.fechaEmporio)}` : ", ya comprado"}
         </div>
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">

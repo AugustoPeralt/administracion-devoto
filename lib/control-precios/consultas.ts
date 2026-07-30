@@ -1002,15 +1002,23 @@ async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParC
 }
 
 function calcularComparacion(r: FilaParCriolloEmporioCruda): FilaComparacionProveedores {
+  // Precio SIEMPRE de la lista vigente de cada lado (nunca de la última
+  // factura real, aunque exista) — decisión del usuario (2026-07-30): usar la
+  // factura real más reciente sesgaba la comparación cuando un lado hace
+  // mucho que no se compra y el otro sí (ej. Criollo de mayo vs Emporio de
+  // julio) — el más viejo terminaba "ganando" solo por estar desactualizado,
+  // no por ser realmente más barato hoy. Comparar contra la lista vigente de
+  // los dos pone ambos lados en la MISMA fecha de referencia ("hoy").
+  // esEstimadoCriollo/esEstimadoEmporio y fechaCriollo/fechaEmporio se
+  // conservan solo como dato informativo de "hace cuánto se compró de
+  // verdad" (confianza de que el producto es relevante), ya no determinan el
+  // precio mostrado — ver TablaComparacionProveedores.tsx y
+  // exportar-reporte/route.ts, que muestran esa fecha aparte.
   const esEstimadoCriollo = r.precioRealCriollo === null;
-  const precioCriollo = esEstimadoCriollo
-    ? Number(r.precioListaCriollo) * (1 - DESCUENTO_LISTA_EL_CRIOLLO / 100)
-    : Number(r.precioRealCriollo) * FACTOR_PRECIO_REAL_ADICIONAL;
+  const precioCriollo = Number(r.precioListaCriollo) * (1 - DESCUENTO_LISTA_EL_CRIOLLO / 100);
 
   const esEstimadoEmporio = r.precioRealEmporio === null;
-  const precioEmporio = esEstimadoEmporio
-    ? Number(r.precioBonifEmporio ?? r.precioListaEmporio)
-    : Number(r.precioRealEmporio);
+  const precioEmporio = Number(r.precioBonifEmporio ?? r.precioListaEmporio);
 
   let masBarato: "criollo" | "emporio" | "igual" = "igual";
   if (precioCriollo < precioEmporio) masBarato = "criollo";
@@ -1038,19 +1046,21 @@ function calcularComparacion(r: FilaParCriolloEmporioCruda): FilaComparacionProv
 
 /**
  * Compara, para cada par CONFIRMADO, el precio de El Criollo contra el de El
- * Emporio — priorizando SIEMPRE el último precio real pagado (de
- * cp_detalle_facturas) por sobre el precio de lista, para ambos lados por
- * igual.
- * - El Criollo REAL: precio_unitario × FACTOR_PRECIO_REAL_ADICIONAL (0.94) —
- *   el precio_unitario de la factura ya trae el 10% de descuento de lista,
- *   pero no el 6% adicional sobre el total, así que se completa acá para que
- *   el precio real quede en el mismo 15.4% combinado que la estimación de
- *   abajo (ver constantes.ts).
- * - El Criollo ESTIMADO (sin compra real todavía): precio_lista ×
- *   (1 − DESCUENTO_LISTA_EL_CRIOLLO/100) — mismo 15.4% combinado, aplicado
- *   directo sobre el precio de lista en vez de sobre un precio ya facturado.
- * - El Emporio: se usa precio_con_bonificacion tal cual (ya es el precio
- *   final negociado, confirmado por el usuario) — sin ajuste, real o estimado.
+ * Emporio — SIEMPRE contra el precio de LISTA VIGENTE de los dos lados, nunca
+ * contra la última factura real (aunque exista). Decisión del usuario
+ * (2026-07-30): comparar facturas reales de fechas distintas (ej. Criollo de
+ * mayo vs Emporio de julio) sesga el resultado a favor del lado que hace más
+ * tiempo que no se compra, porque su precio quedó "congelado" en una fecha
+ * vieja — la lista vigente pone a los dos en la misma fecha de referencia.
+ * - El Criollo: precio_lista × (1 − DESCUENTO_LISTA_EL_CRIOLLO/100) — el
+ *   15.4% combinado de descuento (10% de lista + 6% adicional), ver
+ *   constantes.ts.
+ * - El Emporio: precio_con_bonificacion tal cual (ya es el precio final
+ *   negociado, confirmado por el usuario) — sin ajuste adicional.
+ * `esEstimadoCriollo`/`esEstimadoEmporio` y `fechaCriollo`/`fechaEmporio` NO
+ * afectan el precio — son solo informativos, para mostrar si ese producto se
+ * llegó a comprar de verdad alguna vez y cuándo fue la última (ver
+ * TablaComparacionProveedores.tsx y exportar-reporte/route.ts).
  */
 export async function obtenerComparacionCriolloEmporio(): Promise<FilaComparacionProveedores[]> {
   const filas = await obtenerParesCriolloEmporio(true);

@@ -174,6 +174,8 @@ export async function GET(request: Request) {
   comparacion.getCell("J1").note =
     "Exacta: mismo producto, mismo fabricante.\n" +
     "Distinta marca: mismo producto real, pero cada proveedor lo trae de un fabricante distinto — fila sombreada en gris, menor prioridad/confianza que las filas exactas.";
+  comparacion.getCell("C1").note =
+    "El precio siempre sale de la lista vigente de cada proveedor, nunca de la última factura real — comparar facturas de fechas distintas (ej. Criollo de mayo vs Emporio de julio) favorecía al que hace más tiempo que no se compra. La columna \"Origen\" indica si ya se compró alguna vez y cuándo fue la última, pero eso no cambia el precio mostrado.";
 
   // Prioridad pedida por el usuario (2026-07-30): primero los pares que son el
   // mismo producto exacto, recién después los que son el mismo producto pero
@@ -189,18 +191,14 @@ export async function GET(request: Request) {
       categoria: c.categoria,
       productoCriollo: c.nombreCriollo,
       precioCriollo: c.precioCriollo,
-      origenCriollo: c.esEstimadoCriollo
-        ? `estimado (lista −${DESCUENTO_LISTA_EL_CRIOLLO}%)`
-        : c.fechaCriollo
-          ? `real ajustado, ${formatoFecha(c.fechaCriollo)}`
-          : "real ajustado",
+      origenCriollo:
+        `lista vigente (−${DESCUENTO_LISTA_EL_CRIOLLO}%)` +
+        (c.esEstimadoCriollo ? ", nunca comprado" : c.fechaCriollo ? `, compra real ${formatoFecha(c.fechaCriollo)}` : ", ya comprado"),
       productoEmporio: c.nombreEmporio,
       precioEmporio: c.precioEmporio,
-      origenEmporio: c.esEstimadoEmporio
-        ? "estimado (c/bonif de lista)"
-        : c.fechaEmporio
-          ? `real, ${formatoFecha(c.fechaEmporio)}`
-          : "real",
+      origenEmporio:
+        "lista vigente" +
+        (c.esEstimadoEmporio ? ", nunca comprado" : c.fechaEmporio ? `, compra real ${formatoFecha(c.fechaEmporio)}` : ", ya comprado"),
       conviene:
         c.masBarato === "igual" ? "igual" : c.masBarato === "criollo" ? "Criollo" : "Emporio",
       diferencia: c.masBarato === "igual" ? 0 : c.porcentajeDiferencia / 100,

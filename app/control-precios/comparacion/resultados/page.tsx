@@ -57,11 +57,12 @@ export default async function ResultadosComparacionPage() {
       </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-        Precio de El Criollo <strong>real ajustado</strong> (ya lo compraron): el precio_unitario de la factura solo
-        trae el 10% de descuento de lista — se le resta un 6% más para completar el {DESCUENTO_LISTA_EL_CRIOLLO}%
-        combinado que realmente paga El Criollo (el 6% adicional lo aplican sobre el total con IVA de la factura, no
-        por ítem, pero el precio mostrado ya lo tiene en cuenta). Precio <strong>estimado</strong> (sin compra real
-        todavía): se le resta directo el {DESCUENTO_LISTA_EL_CRIOLLO}% al precio de lista.
+        Los precios de acá abajo son siempre de la <strong>lista vigente</strong> de cada proveedor — nunca de la
+        última factura real, aunque exista: comparar una factura vieja de un lado contra una más nueva del otro
+        favorece al que hace más tiempo que no se compra, así que los dos lados se miran siempre a la misma fecha
+        (hoy). A El Criollo se le resta el {DESCUENTO_LISTA_EL_CRIOLLO}% combinado de descuento (10% de lista + 6%
+        adicional que aplican sobre el total con IVA, no por ítem). La fecha de "última compra real" que se muestra
+        junto a cada producto es solo informativa — indica si ya se lo compramos alguna vez, no cambia el precio.
       </div>
 
       <SeccionColapsable titulo="Comparación de precios — El Criollo ↔ El Emporio">
