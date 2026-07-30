@@ -177,12 +177,22 @@ export async function GET(request: Request) {
   comparacion.getCell("C1").note =
     "El precio siempre sale de la lista vigente de cada proveedor, nunca de la última factura real — comparar facturas de fechas distintas (ej. Criollo de mayo vs Emporio de julio) favorecía al que hace más tiempo que no se compra. La columna \"Origen\" indica si ya se compró alguna vez y cuándo fue la última, pero eso no cambia el precio mostrado.";
 
+  // El Excel (a diferencia de la pantalla, que tiene el filtro "Comprado a
+  // los dos/uno/ninguno" para uso interactivo) siempre se limita a productos
+  // que efectivamente se compraron a alguno de los dos proveedores — un par
+  // confirmado solo por coincidencia de catálogo, sin ninguna compra real de
+  // ningún lado, no aporta al reporte que se manda afuera. Decisión del
+  // usuario (2026-07-30).
+  const comparacionConCompraReal = comparacionCriolloEmporio.filter(
+    (c) => !c.esEstimadoCriollo || !c.esEstimadoEmporio
+  );
+
   // Prioridad pedida por el usuario (2026-07-30): primero los pares que son el
   // mismo producto exacto, recién después los que son el mismo producto pero
   // de una marca distinta a cada lado (distintaMarca=true) — Array.sort es
   // estable, así que dentro de cada grupo se conserva el orden por
   // categoría/nombre que ya trae comparacionCriolloEmporio.
-  const filasOrdenadas = [...comparacionCriolloEmporio].sort(
+  const filasOrdenadas = [...comparacionConCompraReal].sort(
     (a, b) => Number(a.distintaMarca) - Number(b.distintaMarca)
   );
 
