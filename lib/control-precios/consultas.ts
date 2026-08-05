@@ -342,7 +342,7 @@ export async function obtenerDeltaPrecios(
         df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha
       FROM cp_detalle_facturas df
       JOIN cp_facturas f ON f.id = df.factura_id
-      WHERE df.precio_unitario IS NOT NULL AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
+      WHERE df.precio_unitario IS NOT NULL AND f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       ORDER BY df.producto_id, f.local_id, f.fecha_emision ASC
     ),
     ultimo_periodo AS (
@@ -354,7 +354,7 @@ export async function obtenerDeltaPrecios(
       JOIN cp_facturas f ON f.id = df.factura_id
       JOIN cp_productos p ON p.id = df.producto_id
       JOIN cp_proveedores prov ON prov.id = p.proveedor_id
-      WHERE df.precio_unitario IS NOT NULL AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
+      WHERE df.precio_unitario IS NOT NULL AND f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       ORDER BY df.producto_id, f.local_id, f.fecha_emision DESC
     )
     SELECT
@@ -395,7 +395,7 @@ export async function obtenerGastoTotalPeriodo(filtros: FiltrosReporte): Promise
     SELECT COALESCE(SUM(df.subtotal), 0) AS total
     FROM cp_detalle_facturas df
     JOIN cp_facturas f ON f.id = df.factura_id
-    WHERE f.fecha_emision BETWEEN ${desde} AND ${hasta}
+    WHERE f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       AND (${localIdsLit}::int[] IS NULL OR f.local_id = ANY(${localIdsLit}::int[]))
   `);
   return Number((resultado.rows[0] as { total: string }).total);
@@ -414,7 +414,7 @@ export async function obtenerGastoPorCategoria(
     JOIN cp_facturas f ON f.id = df.factura_id
     JOIN cp_productos p ON p.id = df.producto_id
     JOIN cp_proveedores prov ON prov.id = p.proveedor_id
-    WHERE f.fecha_emision BETWEEN ${desde} AND ${hasta}
+    WHERE f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       AND (${localIdsLit}::int[] IS NULL OR f.local_id = ANY(${localIdsLit}::int[]))
     GROUP BY prov.categoria
     ORDER BY total DESC
@@ -531,7 +531,7 @@ export async function obtenerHistorialComprasPorProducto(
     JOIN cp_productos p ON p.id = df.producto_id
     JOIN cp_proveedores prov ON prov.id = p.proveedor_id
     LEFT JOIN alq_locales loc ON loc.id = f.local_id
-    WHERE f.fecha_emision BETWEEN ${desde} AND ${hasta}
+    WHERE f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       AND (${localIdsLit}::int[] IS NULL OR f.local_id = ANY(${localIdsLit}::int[]))
       AND (${proveedorId}::int IS NULL OR prov.id = ${proveedorId})
       AND (${categoria}::text IS NULL OR prov.categoria = ${categoria})
@@ -713,7 +713,13 @@ export async function obtenerComparacionEntreRestaurantes(): Promise<Comparacion
       JOIN cp_facturas f ON f.id = df.factura_id
       -- precio_unitario = 0 casi siempre es un error de extracción (ver
       -- obtenerItemsPrecioCero) y rompería la división de más abajo — se excluye acá.
+      -- estado = 'confirmada': una factura pendiente_revision puede tener
+      -- renglones con el precio pisado/corrido (ver nota en el módulo) —
+      -- comparar contra eso genera alertas de "aumento" que en realidad son
+      -- un error de lectura, no un precio real. Caso real: factura 568
+      -- (2026-08-04) generó 3 falsas alertas de +200% por esto.
       WHERE df.precio_unitario IS NOT NULL AND df.precio_unitario > 0 AND f.local_id IS NOT NULL
+        AND f.estado = 'confirmada'
     ),
     pares AS (
       SELECT
@@ -945,7 +951,11 @@ async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParC
       SELECT DISTINCT ON (df.producto_id) df.producto_id, df.precio_unitario, f.fecha_emision
       FROM cp_detalle_facturas df
       JOIN cp_facturas f ON f.id = df.factura_id
-      WHERE df.precio_unitario IS NOT NULL
+      -- estado = 'confirmada': una factura pendiente_revision puede tener el
+      -- precio pisado/corrido por un error de lectura (ver nota en el
+      -- módulo) — no usarlo como "el precio real" hasta que una persona la
+      -- revise.
+      WHERE df.precio_unitario IS NOT NULL AND f.estado = 'confirmada'
       ORDER BY df.producto_id, f.fecha_emision DESC
     ),
     -- El Criollo y HORECA SRL son en los hechos el mismo distribuidor real —
@@ -963,7 +973,7 @@ async function obtenerParesCriolloEmporio(confirmado: boolean): Promise<FilaParC
       JOIN cp_facturas f ON f.id = df.factura_id
       JOIN cp_productos prod ON prod.id = df.producto_id
       JOIN cp_proveedores prov ON prov.id = prod.proveedor_id
-      WHERE df.precio_unitario IS NOT NULL AND prov.nombre = ${NOMBRE_PROVEEDOR_HORECA}
+      WHERE df.precio_unitario IS NOT NULL AND f.estado = 'confirmada' AND prov.nombre = ${NOMBRE_PROVEEDOR_HORECA}
       ORDER BY lower(prod.nombre), f.fecha_emision DESC
     )
     SELECT
@@ -1162,6 +1172,7 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
     JOIN cp_facturas f ON f.id = df.factura_id
     LEFT JOIN alq_locales loc ON loc.id = f.local_id
     WHERE prov.id IN (${criolloId}, ${horecaId}) AND df.subtotal IS NOT NULL AND df.precio_unitario IS NOT NULL
+      AND f.estado = 'confirmada'
   `);
   const detalle = resultadoDetalle.rows as FilaDetalleCompraCriolloHoreca[];
 
@@ -1223,7 +1234,7 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
               SELECT DISTINCT ON (df.producto_id) df.producto_id, df.precio_unitario, f.fecha_emision
               FROM cp_detalle_facturas df
               JOIN cp_facturas f ON f.id = df.factura_id
-              WHERE df.precio_unitario IS NOT NULL
+              WHERE df.precio_unitario IS NOT NULL AND f.estado = 'confirmada'
               ORDER BY df.producto_id, f.fecha_emision DESC
             )
             SELECT pn.criollo_lista_id AS "criolloListaId", pn.par_id AS "parId", pn.distinta_marca AS "distintaMarca",
