@@ -8,6 +8,7 @@ import {
   sonSustitutosPorMarca,
   extraerCantidad,
   esCuitValido,
+  limpiarCodigoLoteFactura,
 } from "./normalizar";
 
 test("normalizarNombreProducto: ignora tildes, mayúsculas y espacios repetidos", () => {
@@ -18,6 +19,22 @@ test("normalizarNombreProducto: ignora tildes, mayúsculas y espacios repetidos"
 test("primerDiaDelMes: no se corre de mes por zona horaria", () => {
   assert.equal(primerDiaDelMes("2026-07-15"), "2026-07-01");
   assert.equal(primerDiaDelMes("2026-01-31"), "2026-01-01");
+});
+
+test("limpiarCodigoLoteFactura: quita el código de lote/origen pegado al final (caso real)", () => {
+  assert.equal(
+    limpiarCodigoLoteFactura("CAFE EN GRANO TIERRA INTENSO X 1 KG ITALIA 25 001 IC04 042117 J Origen:ITALIA"),
+    "CAFE EN GRANO TIERRA INTENSO X 1 KG ITALIA"
+  );
+  assert.equal(
+    limpiarCodigoLoteFactura("TOMATE PERITA ITALIANO LA BIANCA X 2.55 KG 25.001 IC04 126394 T Origen: ITALIA"),
+    "TOMATE PERITA ITALIANO LA BIANCA X 2.55 KG"
+  );
+});
+
+test("limpiarCodigoLoteFactura: no toca nombres sin código de lote", () => {
+  assert.equal(limpiarCodigoLoteFactura("CAFE EN GRANO TIERRA INTENSO X 1 KG ITALIA"), "CAFE EN GRANO TIERRA INTENSO X 1 KG ITALIA");
+  assert.equal(limpiarCodigoLoteFactura("PARMESANO VAQUERO KG SIN GLUTEN"), "PARMESANO VAQUERO KG SIN GLUTEN");
 });
 
 test("nombreBaseComercial: quita sufijos societarios y puntuación", () => {

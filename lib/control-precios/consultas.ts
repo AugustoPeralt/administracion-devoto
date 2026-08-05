@@ -1,8 +1,8 @@
 import { db } from "@/db";
-import { alqLocales, cpProveedores } from "@/db/schema";
-import { asc, eq, sql, type SQL } from "drizzle-orm";
+import { alqLocales, cpListasPreciosProveedor, cpProveedores } from "@/db/schema";
+import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
-import { sonNombresSimilares } from "@/lib/control-precios/normalizar";
+import { limpiarCodigoLoteFactura, sonNombresSimilares } from "@/lib/control-precios/normalizar";
 import {
   DESCUENTO_LISTA_EL_CRIOLLO,
   DIAS_MAX_DIFERENCIA_COMPARACION_RESTAURANTES,
@@ -1081,6 +1081,206 @@ export type FilaSugerenciaPar = FilaComparacionProveedores & { motivo: string | 
 export async function obtenerSugerenciasPendientes(): Promise<FilaSugerenciaPar[]> {
   const filas = await obtenerParesCriolloEmporio(false);
   return filas.map((r) => ({ ...calcularComparacion(r), motivo: r.motivo }));
+}
+
+export type CandidatoEmporio = {
+  parId: number;
+  nombreEmporio: string;
+  precioEmporio: number;
+  esEstimadoEmporio: boolean;
+  fechaEmporio: string | null;
+  distintaMarca: boolean;
+  masBarato: "criollo" | "emporio" | "igual";
+  porcentajeDiferencia: number;
+};
+
+export type FilaTop20MasComprado = {
+  nombreCriollo: string;
+  categoria: string | null;
+  gastoTotal: number;
+  cantidadTotal: number;
+  unidadMedida: string;
+  precioCriolloActual: number;
+  fechaCompraCriollo: string;
+  proveedorCompra: string;
+  candidatosEmporio: CandidatoEmporio[];
+};
+
+type FilaDetalleCompraCriolloHoreca = {
+  nombre: string;
+  unidadMedida: string;
+  proveedor: string;
+  subtotal: string;
+  cantidad: string;
+  precioUnitario: string;
+  fechaEmision: string;
+};
+
+type FilaCandidatoEmporioCruda = {
+  criolloListaId: number;
+  parId: number;
+  distintaMarca: boolean;
+  nombreEmporio: string;
+  precioListaEmporio: string;
+  precioBonifEmporio: string | null;
+  precioRealEmporio: string | null;
+  fechaEmporio: string | null;
+};
+
+/**
+ * Top N productos más comprados a El Criollo + HORECA (combinados — ver nota
+ * en obtenerParesCriolloEmporio sobre por qué son en los hechos el mismo
+ * distribuidor real), rankeados por $ gastado histórico total, contra TODOS
+ * los productos de El Emporio confirmados como posible competencia (ver
+ * cp_pares_precios_proveedores.distintaMarca) — a diferencia de
+ * obtenerComparacionCriolloEmporio(), acá el precio de El Criollo SÍ es el
+ * REAL de la última factura (no el de lista): son justamente los productos
+ * que más se compran, así que la última factura es representativa de hoy, no
+ * un dato aislado y viejo. Decisión del usuario (2026-07-30).
+ *
+ * Antes de rankear, agrupa por nombre limpio (ver limpiarCodigoLoteFactura)
+ * porque algunas facturas de productos importados traen un código de
+ * lote/origen pegado al nombre que la IA lee en algunas fotos y en otras no
+ * — sin agrupar, el mismo producto real queda partido en 2-4 "productos" y
+ * ninguno entra al top.
+ */
+export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promise<FilaTop20MasComprado[]> {
+  const [criolloId, emporioId] = await Promise.all([
+    buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_CRIOLLO),
+    buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_EMPORIO),
+  ]);
+  const horecaId = await buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_HORECA);
+
+  const resultadoDetalle = await db.execute(sql`
+    SELECT p.nombre, p.unidad_medida AS "unidadMedida", prov.nombre AS proveedor,
+      df.subtotal, df.cantidad, df.precio_unitario AS "precioUnitario", f.fecha_emision AS "fechaEmision"
+    FROM cp_detalle_facturas df
+    JOIN cp_productos p ON p.id = df.producto_id
+    JOIN cp_proveedores prov ON prov.id = p.proveedor_id
+    JOIN cp_facturas f ON f.id = df.factura_id
+    WHERE prov.id IN (${criolloId}, ${horecaId}) AND df.subtotal IS NOT NULL AND df.precio_unitario IS NOT NULL
+  `);
+  const detalle = resultadoDetalle.rows as FilaDetalleCompraCriolloHoreca[];
+
+  type Grupo = { gasto: number; cantidad: number; masReciente: FilaDetalleCompraCriolloHoreca };
+  const grupos = new Map<string, Grupo>();
+  for (const f of detalle) {
+    const clave = limpiarCodigoLoteFactura(f.nombre).toLowerCase();
+    const actual = grupos.get(clave);
+    if (!actual) {
+      grupos.set(clave, { gasto: Number(f.subtotal), cantidad: Number(f.cantidad), masReciente: f });
+    } else {
+      actual.gasto += Number(f.subtotal);
+      actual.cantidad += Number(f.cantidad);
+      if (f.fechaEmision > actual.masReciente.fechaEmision) actual.masReciente = f;
+    }
+  }
+
+  const ranking = [...grupos.values()]
+    .map((g) => ({ ...g, nombreLimpio: limpiarCodigoLoteFactura(g.masReciente.nombre) }))
+    .sort((a, b) => b.gasto - a.gasto)
+    .slice(0, cantidad);
+
+  if (ranking.length === 0) return [];
+
+  // El nombre de la lista VIGENTE de El Criollo es siempre el nombre limpio
+  // (sin código de lote) — ese ruido solo aparece al leer facturas, nunca en
+  // el Excel de lista de precios que se importa aparte.
+  const listasCriollo = await db
+    .select({ id: cpListasPreciosProveedor.id, descripcion: cpListasPreciosProveedor.descripcion, categoria: cpListasPreciosProveedor.categoria })
+    .from(cpListasPreciosProveedor)
+    .where(
+      and(
+        eq(cpListasPreciosProveedor.proveedorId, criolloId),
+        inArray(
+          cpListasPreciosProveedor.descripcion,
+          ranking.map((r) => r.nombreLimpio)
+        )
+      )
+    );
+  const listaCriolloPorNombre = new Map(listasCriollo.map((l) => [l.descripcion.toLowerCase(), l]));
+
+  const idsListaCriollo = listasCriollo.map((l) => l.id);
+  const candidatosCrudos =
+    idsListaCriollo.length === 0
+      ? []
+      : ((
+          await db.execute(sql`
+            WITH pares_normalizados AS (
+              SELECT
+                par.id AS par_id, par.distinta_marca AS distinta_marca,
+                CASE WHEN la.proveedor_id = ${criolloId} THEN la.id ELSE lb.id END AS criollo_lista_id,
+                CASE WHEN la.proveedor_id = ${emporioId} THEN la.id ELSE lb.id END AS emporio_lista_id
+              FROM cp_pares_precios_proveedores par
+              JOIN cp_listas_precios_proveedor la ON la.id = par.lista_a_id
+              JOIN cp_listas_precios_proveedor lb ON lb.id = par.lista_b_id
+              WHERE par.confirmado = true
+            ),
+            ultimo_precio_real_emporio AS (
+              SELECT DISTINCT ON (df.producto_id) df.producto_id, df.precio_unitario, f.fecha_emision
+              FROM cp_detalle_facturas df
+              JOIN cp_facturas f ON f.id = df.factura_id
+              WHERE df.precio_unitario IS NOT NULL
+              ORDER BY df.producto_id, f.fecha_emision DESC
+            )
+            SELECT pn.criollo_lista_id AS "criolloListaId", pn.par_id AS "parId", pn.distinta_marca AS "distintaMarca",
+              le.descripcion AS "nombreEmporio", le.precio_lista AS "precioListaEmporio",
+              le.precio_con_bonificacion AS "precioBonifEmporio",
+              upe.precio_unitario AS "precioRealEmporio", upe.fecha_emision AS "fechaEmporio"
+            FROM pares_normalizados pn
+            JOIN cp_listas_precios_proveedor le ON le.id = pn.emporio_lista_id
+            LEFT JOIN ultimo_precio_real_emporio upe ON upe.producto_id = le.producto_id
+            WHERE pn.criollo_lista_id IN (${sql.join(idsListaCriollo, sql`, `)})
+            ORDER BY le.descripcion
+          `)
+        ).rows as FilaCandidatoEmporioCruda[]);
+
+  const candidatosPorCriolloListaId = new Map<number, FilaCandidatoEmporioCruda[]>();
+  for (const c of candidatosCrudos) {
+    const lista = candidatosPorCriolloListaId.get(c.criolloListaId) ?? [];
+    lista.push(c);
+    candidatosPorCriolloListaId.set(c.criolloListaId, lista);
+  }
+
+  return ranking.map((r) => {
+    const listaCriollo = listaCriolloPorNombre.get(r.nombreLimpio.toLowerCase());
+    const precioCriolloActual = Number(r.masReciente.precioUnitario) * FACTOR_PRECIO_REAL_ADICIONAL;
+    const candidatosCrudosDeEste = listaCriollo ? (candidatosPorCriolloListaId.get(listaCriollo.id) ?? []) : [];
+
+    const candidatosEmporio: CandidatoEmporio[] = candidatosCrudosDeEste.map((c) => {
+      const esEstimadoEmporio = c.precioRealEmporio === null;
+      const precioEmporio = esEstimadoEmporio ? Number(c.precioBonifEmporio ?? c.precioListaEmporio) : Number(c.precioRealEmporio);
+      let masBarato: "criollo" | "emporio" | "igual" = "igual";
+      if (precioCriolloActual < precioEmporio) masBarato = "criollo";
+      else if (precioEmporio < precioCriolloActual) masBarato = "emporio";
+      const caro = Math.max(precioCriolloActual, precioEmporio);
+      const barato = Math.min(precioCriolloActual, precioEmporio);
+      const porcentajeDiferencia = barato > 0 ? ((caro - barato) / barato) * 100 : 0;
+      return {
+        parId: c.parId,
+        nombreEmporio: c.nombreEmporio,
+        precioEmporio,
+        esEstimadoEmporio,
+        fechaEmporio: c.fechaEmporio,
+        distintaMarca: c.distintaMarca,
+        masBarato,
+        porcentajeDiferencia: Math.round(porcentajeDiferencia * 100) / 100,
+      };
+    });
+    candidatosEmporio.sort((a, b) => a.precioEmporio - b.precioEmporio);
+
+    return {
+      nombreCriollo: r.nombreLimpio,
+      categoria: listaCriollo?.categoria ?? null,
+      gastoTotal: Math.round(r.gasto),
+      cantidadTotal: Math.round(r.cantidad * 100) / 100,
+      unidadMedida: r.masReciente.unidadMedida,
+      precioCriolloActual,
+      fechaCompraCriollo: r.masReciente.fechaEmision,
+      proveedorCompra: r.masReciente.proveedor,
+      candidatosEmporio,
+    };
+  });
 }
 
 export type FilaDeltaListaProveedor = {

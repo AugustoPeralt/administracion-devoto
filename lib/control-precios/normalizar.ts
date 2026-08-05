@@ -13,6 +13,21 @@ export function normalizarNombreProducto(nombre: string): string {
     .replace(/\s+/g, " ");
 }
 
+/**
+ * Los productos IMPORTADOS (café, tomate italiano) a veces traen en la
+ * factura un código de lote/origen pegado al final de la descripción, que la
+ * IA lee en algunas fotos y en otras no (ej. "...X 1 KG ITALIA 25 001 IC04
+ * 042117 J Origen:ITALIA" vs "...X 1 KG ITALIA" a secas) — sin limpiarlo, el
+ * mismo producto real queda partido en 3-4 "productos" con nombre distinto
+ * (cp_productos.nombre es único por proveedor) y ningún ranking de compras lo
+ * detecta como el mismo. Usado por obtenerTop20MasCompradosCriolloEmporio()
+ * para agrupar antes de rankear por gasto — no toca cp_productos.nombre en
+ * sí, solo agrupa en memoria.
+ */
+export function limpiarCodigoLoteFactura(nombre: string): string {
+  return nombre.replace(/\s+\d{2}[.\s]\d{3}\s+ic\d+.*$/i, "").trim();
+}
+
 /** "2026-07-15" -> "2026-07-01". Slicing de texto en vez de Date para no arrastrar
  * corrimientos de zona horaria (new Date("2026-07-15") es UTC medianoche, pero
  * .getMonth() lo lee en zona local y puede devolver junio). */

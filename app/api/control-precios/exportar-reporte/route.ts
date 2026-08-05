@@ -1,16 +1,16 @@
 import { auth } from "@/auth";
 import {
-  obtenerComparacionCriolloEmporio,
   obtenerDeltaPrecios,
   obtenerGastoPorCategoria,
   obtenerGastoTotalPeriodo,
   obtenerHistorialComprasPorProducto,
+  obtenerTopMasCompradosCriolloEmporio,
   parseLocalIds,
   precioRealAjustado,
   quincenaActual,
   type FiltrosReporte,
 } from "@/lib/control-precios/consultas";
-import { DESCUENTO_LISTA_EL_CRIOLLO, UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
+import { UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
 import { formatoFecha } from "@/lib/formato";
 import ExcelJS from "exceljs";
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     categoria: (categoriaParam as CategoriaInsumo | null) || undefined,
   };
 
-  const [deltas, gastoTotal, gastoPorCategoria, historialCompras, comparacionCriolloEmporio] = await Promise.all([
+  const [deltas, gastoTotal, gastoPorCategoria, historialCompras] = await Promise.all([
     obtenerDeltaPrecios(filtros),
     obtenerGastoTotalPeriodo(filtros),
     obtenerGastoPorCategoria(filtros),
@@ -67,9 +67,6 @@ export async function GET(request: Request) {
     // distinta, no tiene sentido mezclar su consumo a la hora de decidir
     // proveedores. Ver comentario en la función.
     obtenerHistorialComprasPorProducto(filtros, true),
-    // No depende de desde/hasta: es el mismo par confirmado vigente que se ve
-    // en /control-precios/comparacion/resultados, no un corte por período.
-    obtenerComparacionCriolloEmporio(),
   ]);
 
   const workbook = new ExcelJS.Workbook();
@@ -149,89 +146,100 @@ export async function GET(request: Request) {
     resumen.getColumn(7).width = 12;
   }
 
-  // Mismos pares CONFIRMADOS y mismo cálculo que /control-precios/comparacion/resultados
-  // (obtenerComparacionCriolloEmporio) — precio vigente al momento de generar el
-  // Excel, no un corte histórico. "real ajustado"/"estimado" y sus fechas se
-  // muestran igual que en pantalla para que quien lo lea sepa si el precio sale
-  // de una compra real o de la lista sin comprar todavía.
-  const comparacion = workbook.addWorksheet("Comparación Criollo-Emporio");
-  comparacion.columns = [
+  // Los 20 productos donde más plata se gastó históricamente en El Criollo +
+  // HORECA (combinados — son en los hechos el mismo distribuidor real, ver
+  // nota en obtenerParesCriolloEmporio), contra TODOS los productos de El
+  // Emporio marcados como posible competencia — sin importar si tienen
+  // nombre/marca distinta, a diferencia de la comparación por catálogo de
+  // obtenerComparacionCriolloEmporio(). Acá el precio de El Criollo/HORECA es
+  // el REAL de la última factura (no el de lista): son los productos de
+  // mayor consumo, así que la última factura es representativa de hoy.
+  // Decisión del usuario (2026-07-30).
+  const top20 = workbook.addWorksheet("Top 20 más comprados");
+  top20.columns = [
+    { header: "#", key: "ranking", width: 4 },
     { header: "Categoría", key: "categoria", width: 14 },
-    { header: "Producto (El Criollo)", key: "productoCriollo", width: 36 },
-    { header: "Precio Criollo", key: "precioCriollo", width: 15 },
-    { header: "Origen Criollo", key: "origenCriollo", width: 22 },
-    { header: "Producto (El Emporio)", key: "productoEmporio", width: 36 },
+    { header: "Producto (El Criollo / HORECA)", key: "productoCriollo", width: 40 },
+    { header: "Comprado a", key: "compradoA", width: 12 },
+    { header: "Gasto histórico", key: "gastoTotal", width: 16 },
+    { header: "Precio actual", key: "precioCriollo", width: 14 },
+    { header: "Última compra", key: "fechaCriollo", width: 14 },
+    { header: "Candidato (El Emporio)", key: "productoEmporio", width: 40 },
     { header: "Precio Emporio", key: "precioEmporio", width: 15 },
     { header: "Origen Emporio", key: "origenEmporio", width: 22 },
+    { header: "Coincidencia", key: "coincidencia", width: 16 },
     { header: "Conviene", key: "conviene", width: 14 },
     { header: "% Diferencia", key: "diferencia", width: 12 },
-    { header: "Coincidencia", key: "coincidencia", width: 16 },
   ];
-  comparacion.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-  comparacion.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_ENCABEZADO } };
-  comparacion.views = [{ state: "frozen", ySplit: 1 }];
-  comparacion.autoFilter = { from: "A1", to: "J1" };
-  comparacion.getCell("J1").note =
-    "Exacta: mismo producto, mismo fabricante.\n" +
-    "Distinta marca: mismo producto real, pero cada proveedor lo trae de un fabricante distinto — fila sombreada en gris, menor prioridad/confianza que las filas exactas.";
-  comparacion.getCell("C1").note =
-    "El precio siempre sale de la lista vigente de cada proveedor, nunca de la última factura real — comparar facturas de fechas distintas (ej. Criollo de mayo vs Emporio de julio) favorecía al que hace más tiempo que no se compra. La columna \"Origen\" indica si ya se compró alguna vez y cuándo fue la última, pero eso no cambia el precio mostrado.";
+  top20.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  top20.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_ENCABEZADO } };
+  top20.views = [{ state: "frozen", ySplit: 1 }];
+  top20.autoFilter = { from: "A1", to: "M1" };
+  top20.getCell("E1").note =
+    "$ gastado histórico total en ese producto (todas las facturas cargadas), sumando El Criollo y HORECA — así se eligieron estos 20.";
+  top20.getCell("F1").note =
+    "A diferencia de la otra comparación por catálogo, acá el precio de El Criollo/HORECA es el REAL de la última factura (no el de lista) — al ser los productos que más se compran, la última factura es representativa de hoy, no un dato viejo aislado.";
+  top20.getCell("K1").note =
+    "Misma marca: mismo producto, mismo fabricante de los dos lados.\n" +
+    "Distinta marca: mismo producto real, pero cada proveedor lo trae de un fabricante distinto — fila sombreada en gris.";
 
-  // El Excel (a diferencia de la pantalla, que tiene el filtro "Comprado a
-  // los dos/uno/ninguno" para uso interactivo) siempre se limita a productos
-  // que efectivamente se compraron a alguno de los dos proveedores — un par
-  // confirmado solo por coincidencia de catálogo, sin ninguna compra real de
-  // ningún lado, no aporta al reporte que se manda afuera. Decisión del
-  // usuario (2026-07-30).
-  const comparacionConCompraReal = comparacionCriolloEmporio.filter(
-    (c) => !c.esEstimadoCriollo || !c.esEstimadoEmporio
-  );
+  const filasTop20 = await obtenerTopMasCompradosCriolloEmporio(20);
 
-  // Prioridad pedida por el usuario (2026-07-30): primero los pares que son el
-  // mismo producto exacto, recién después los que son el mismo producto pero
-  // de una marca distinta a cada lado (distintaMarca=true) — Array.sort es
-  // estable, así que dentro de cada grupo se conserva el orden por
-  // categoría/nombre que ya trae comparacionCriolloEmporio.
-  const filasOrdenadas = [...comparacionConCompraReal].sort(
-    (a, b) => Number(a.distintaMarca) - Number(b.distintaMarca)
-  );
-
-  for (const c of filasOrdenadas) {
-    const fila = comparacion.addRow({
-      categoria: c.categoria,
-      productoCriollo: c.nombreCriollo,
-      precioCriollo: c.precioCriollo,
-      origenCriollo:
-        `lista vigente (−${DESCUENTO_LISTA_EL_CRIOLLO}%)` +
-        (c.esEstimadoCriollo ? ", nunca comprado" : c.fechaCriollo ? `, compra real ${formatoFecha(c.fechaCriollo)}` : ", ya comprado"),
-      productoEmporio: c.nombreEmporio,
-      precioEmporio: c.precioEmporio,
-      origenEmporio:
-        "lista vigente" +
-        (c.esEstimadoEmporio ? ", nunca comprado" : c.fechaEmporio ? `, compra real ${formatoFecha(c.fechaEmporio)}` : ", ya comprado"),
-      conviene:
-        c.masBarato === "igual" ? "igual" : c.masBarato === "criollo" ? "Criollo" : "Emporio",
-      diferencia: c.masBarato === "igual" ? 0 : c.porcentajeDiferencia / 100,
-      coincidencia: c.distintaMarca ? "Distinta marca" : "Exacta",
-    });
-    fila.getCell("precioCriollo").numFmt = '"$"#,##0';
-    fila.getCell("precioEmporio").numFmt = '"$"#,##0';
-    fila.getCell("diferencia").numFmt = "0.00%";
-    // Fila entera sombreada (no solo la columna "Coincidencia") para que se
-    // note de un vistazo scrolleando que este tramo es de menor confianza —
-    // mismo criterio de "resaltar toda la fila" que ya usan COLOR_ALERTA/
-    // COLOR_SIN_VERIFICAR más abajo en este archivo. No se usa un separador
-    // de fila en blanco porque rompería el autoFilter/orden de Excel.
-    if (c.distintaMarca) {
-      fila.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_FILA_MARCA_DISTINTA } };
-      fila.getCell("coincidencia").font = { italic: true, bold: true, color: { argb: "FF475569" } };
+  filasTop20.forEach((p, i) => {
+    if (p.candidatosEmporio.length === 0) {
+      const fila = top20.addRow({
+        ranking: i + 1,
+        categoria: p.categoria,
+        productoCriollo: p.nombreCriollo,
+        compradoA: p.proveedorCompra,
+        gastoTotal: p.gastoTotal,
+        precioCriollo: p.precioCriolloActual,
+        fechaCriollo: comoFecha(p.fechaCompraCriollo),
+        productoEmporio: "(sin competencia identificada en El Emporio)",
+      });
+      fila.getCell("productoEmporio").font = { italic: true, color: { argb: "FF94A3B8" } };
+      fila.getCell("gastoTotal").numFmt = '"$"#,##0';
+      fila.getCell("precioCriollo").numFmt = '"$"#,##0';
+      fila.getCell("fechaCriollo").numFmt = FORMATO_FECHA;
+      return;
     }
-    if (c.masBarato !== "igual") {
-      const color = c.masBarato === "criollo" ? COLOR_TEXTO_CRIOLLO : COLOR_TEXTO_EMPORIO;
-      fila.getCell("conviene").font = { bold: true, color: { argb: color } };
-      fila.getCell("diferencia").font = { bold: true, color: { argb: color } };
+
+    for (const c of p.candidatosEmporio) {
+      const fila = top20.addRow({
+        ranking: i + 1,
+        categoria: p.categoria,
+        productoCriollo: p.nombreCriollo,
+        compradoA: p.proveedorCompra,
+        gastoTotal: p.gastoTotal,
+        precioCriollo: p.precioCriolloActual,
+        fechaCriollo: comoFecha(p.fechaCompraCriollo),
+        productoEmporio: c.nombreEmporio,
+        precioEmporio: c.precioEmporio,
+        origenEmporio: c.esEstimadoEmporio
+          ? "estimado (lista)"
+          : c.fechaEmporio
+            ? `real, ${formatoFecha(c.fechaEmporio)}`
+            : "real",
+        coincidencia: c.distintaMarca ? "Distinta marca" : "Misma marca",
+        conviene: c.masBarato === "igual" ? "igual" : c.masBarato === "criollo" ? "Criollo" : "Emporio",
+        diferencia: c.masBarato === "igual" ? 0 : c.porcentajeDiferencia / 100,
+      });
+      fila.getCell("gastoTotal").numFmt = '"$"#,##0';
+      fila.getCell("precioCriollo").numFmt = '"$"#,##0';
+      fila.getCell("fechaCriollo").numFmt = FORMATO_FECHA;
+      fila.getCell("precioEmporio").numFmt = '"$"#,##0';
+      fila.getCell("diferencia").numFmt = "0.00%";
+      if (c.distintaMarca) {
+        fila.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_FILA_MARCA_DISTINTA } };
+        fila.getCell("coincidencia").font = { italic: true, bold: true, color: { argb: "FF475569" } };
+      }
+      if (c.masBarato !== "igual") {
+        const color = c.masBarato === "criollo" ? COLOR_TEXTO_CRIOLLO : COLOR_TEXTO_EMPORIO;
+        fila.getCell("conviene").font = { bold: true, color: { argb: color } };
+        fila.getCell("diferencia").font = { bold: true, color: { argb: color } };
+      }
     }
-  }
+  });
 
   const precios = workbook.addWorksheet("Precios");
   precios.columns = [
