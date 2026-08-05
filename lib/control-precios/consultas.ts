@@ -1096,7 +1096,7 @@ export type CandidatoEmporio = {
 
 export type FilaTop20MasComprado = {
   nombreCriollo: string;
-  categoria: string | null;
+  empresa: string;
   gastoTotal: number;
   cantidadTotal: number;
   unidadMedida: string;
@@ -1114,6 +1114,7 @@ type FilaDetalleCompraCriolloHoreca = {
   cantidad: string;
   precioUnitario: string;
   fechaEmision: string;
+  localNombre: string | null;
 };
 
 type FilaCandidatoEmporioCruda = {
@@ -1153,11 +1154,13 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
 
   const resultadoDetalle = await db.execute(sql`
     SELECT p.nombre, p.unidad_medida AS "unidadMedida", prov.nombre AS proveedor,
-      df.subtotal, df.cantidad, df.precio_unitario AS "precioUnitario", f.fecha_emision AS "fechaEmision"
+      df.subtotal, df.cantidad, df.precio_unitario AS "precioUnitario", f.fecha_emision AS "fechaEmision",
+      loc.nombre AS "localNombre"
     FROM cp_detalle_facturas df
     JOIN cp_productos p ON p.id = df.producto_id
     JOIN cp_proveedores prov ON prov.id = p.proveedor_id
     JOIN cp_facturas f ON f.id = df.factura_id
+    LEFT JOIN alq_locales loc ON loc.id = f.local_id
     WHERE prov.id IN (${criolloId}, ${horecaId}) AND df.subtotal IS NOT NULL AND df.precio_unitario IS NOT NULL
   `);
   const detalle = resultadoDetalle.rows as FilaDetalleCompraCriolloHoreca[];
@@ -1187,7 +1190,7 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
   // (sin código de lote) — ese ruido solo aparece al leer facturas, nunca en
   // el Excel de lista de precios que se importa aparte.
   const listasCriollo = await db
-    .select({ id: cpListasPreciosProveedor.id, descripcion: cpListasPreciosProveedor.descripcion, categoria: cpListasPreciosProveedor.categoria })
+    .select({ id: cpListasPreciosProveedor.id, descripcion: cpListasPreciosProveedor.descripcion })
     .from(cpListasPreciosProveedor)
     .where(
       and(
@@ -1271,7 +1274,10 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
 
     return {
       nombreCriollo: r.nombreLimpio,
-      categoria: listaCriollo?.categoria ?? null,
+      // Empresa (restaurante) de la compra más reciente — la misma que fija
+      // "precio actual" y "última compra", no una lista de todas las que
+      // compraron este producto en algún momento.
+      empresa: r.masReciente.localNombre ?? "Sin asignar",
       gastoTotal: Math.round(r.gasto),
       cantidadTotal: Math.round(r.cantidad * 100) / 100,
       unidadMedida: r.masReciente.unidadMedida,
