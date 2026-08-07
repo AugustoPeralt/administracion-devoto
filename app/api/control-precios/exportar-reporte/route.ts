@@ -146,16 +146,20 @@ export async function GET(request: Request) {
     resumen.getColumn(7).width = 12;
   }
 
-  // Los 20 productos donde más plata se gastó históricamente en El Criollo +
-  // HORECA (combinados — son en los hechos el mismo distribuidor real, ver
-  // nota en obtenerParesCriolloEmporio), contra TODOS los productos de El
-  // Emporio marcados como posible competencia — sin importar si tienen
-  // nombre/marca distinta, a diferencia de la comparación por catálogo de
-  // obtenerComparacionCriolloEmporio(). Acá el precio de El Criollo/HORECA es
-  // el REAL de la última factura (no el de lista): son los productos de
-  // mayor consumo, así que la última factura es representativa de hoy.
-  // Decisión del usuario (2026-07-30).
-  const top20 = workbook.addWorksheet("Top 20 más comprados");
+  // Top 20 POR EMPRESA (restaurante) de los productos donde más plata se
+  // gastó históricamente en El Criollo + HORECA (combinados — son en los
+  // hechos el mismo distribuidor real, ver nota en obtenerParesCriolloEmporio)
+  // — cada empresa tiene su propio ranking de 20, filtrable por la columna
+  // "Empresa", para no tapar a los restaurantes chicos detrás de los 2-3 que
+  // más compran (ver obtenerTopMasCompradosCriolloEmporio). Contra TODOS los
+  // productos de El Emporio marcados como posible competencia — sin importar
+  // si tienen nombre/marca distinta, a diferencia de la comparación por
+  // catálogo de obtenerComparacionCriolloEmporio(). Acá el precio de El
+  // Criollo/HORECA es el REAL de la última factura de esa empresa (no el de
+  // lista): son los productos de mayor consumo, así que la última factura es
+  // representativa de hoy. Decisión del usuario (2026-07-30, ampliado a
+  // por-empresa el 2026-07-31).
+  const top20 = workbook.addWorksheet("Top 20 por empresa");
   top20.columns = [
     { header: "#", key: "ranking", width: 4 },
     { header: "Empresa", key: "empresa", width: 20 },
@@ -176,22 +180,23 @@ export async function GET(request: Request) {
   top20.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_ENCABEZADO } };
   top20.views = [{ state: "frozen", ySplit: 1 }];
   top20.autoFilter = { from: "A1", to: "N1" };
+  top20.getCell("A1").note = "Puesto 1-20 DENTRO de esa empresa — cada empresa tiene su propio ranking, no es una posición global.";
   top20.getCell("E1").note =
-    "$ gastado histórico total en ese producto (todas las facturas cargadas), sumando El Criollo y HORECA — así se eligieron estos 20.";
-  top20.getCell("F1").note = "Cantidad total comprada históricamente (misma suma que el gasto), en la unidad de medida de la última compra.";
+    "$ gastado histórico total en ese producto POR ESA EMPRESA (todas sus facturas cargadas), sumando El Criollo y HORECA — así se eligió el top 20 de cada una.";
+  top20.getCell("F1").note = "Cantidad total comprada históricamente por esa empresa (misma suma que el gasto), en la unidad de medida de la última compra.";
   top20.getCell("G1").note =
-    "A diferencia de la otra comparación por catálogo, acá el precio de El Criollo/HORECA es el REAL de la última factura (no el de lista) — al ser los productos que más se compran, la última factura es representativa de hoy, no un dato viejo aislado.";
-  top20.getCell("B1").note = "Empresa (restaurante) de la compra más reciente — la misma que fija el precio actual y la última compra.";
+    "A diferencia de la otra comparación por catálogo, acá el precio de El Criollo/HORECA es el REAL de la última factura de ESA empresa (no el de lista) — al ser los productos que más se compran, la última factura es representativa de hoy, no un dato viejo aislado.";
+  top20.getCell("B1").note = "Filtrá por esta columna para ver el top 20 de una sola empresa/restaurante.";
   top20.getCell("L1").note =
     "Misma marca: mismo producto, mismo fabricante de los dos lados.\n" +
     "Distinta marca: mismo producto real, pero cada proveedor lo trae de un fabricante distinto — fila sombreada en gris.";
 
   const filasTop20 = await obtenerTopMasCompradosCriolloEmporio(20);
 
-  filasTop20.forEach((p, i) => {
+  filasTop20.forEach((p) => {
     if (p.candidatosEmporio.length === 0) {
       const fila = top20.addRow({
-        ranking: i + 1,
+        ranking: p.ranking,
         empresa: p.empresa,
         productoCriollo: p.nombreCriollo,
         compradoA: p.proveedorCompra,
@@ -210,7 +215,7 @@ export async function GET(request: Request) {
 
     for (const c of p.candidatosEmporio) {
       const fila = top20.addRow({
-        ranking: i + 1,
+        ranking: p.ranking,
         empresa: p.empresa,
         productoCriollo: p.nombreCriollo,
         compradoA: p.proveedorCompra,

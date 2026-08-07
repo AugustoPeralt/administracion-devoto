@@ -1107,6 +1107,9 @@ export type CandidatoEmporio = {
 export type FilaTop20MasComprado = {
   nombreCriollo: string;
   empresa: string;
+  /** Puesto 1..cantidadPorEmpresa DENTRO de esa empresa — cada empresa tiene
+   * su propio ranking, no es una posición global. */
+  ranking: number;
   gastoTotal: number;
   cantidadTotal: number;
   unidadMedida: string;
@@ -1141,13 +1144,20 @@ type FilaCandidatoEmporioCruda = {
 /**
  * Top N productos más comprados a El Criollo + HORECA (combinados — ver nota
  * en obtenerParesCriolloEmporio sobre por qué son en los hechos el mismo
- * distribuidor real), rankeados por $ gastado histórico total, contra TODOS
- * los productos de El Emporio confirmados como posible competencia (ver
- * cp_pares_precios_proveedores.distintaMarca) — a diferencia de
- * obtenerComparacionCriolloEmporio(), acá el precio de El Criollo SÍ es el
- * REAL de la última factura (no el de lista): son justamente los productos
- * que más se compran, así que la última factura es representativa de hoy, no
- * un dato aislado y viejo. Decisión del usuario (2026-07-30).
+ * distribuidor real), UNO POR EMPRESA (restaurante) — cada empresa tiene su
+ * propio ranking de N productos por $ gastado, no un ranking global. Antes
+ * mezclar todos los restaurantes en un solo top 20 hacía que los 2-3 que más
+ * compran taparan al resto (ver `empresa` en FilaTop20MasComprado); ahora se
+ * puede filtrar por empresa en el Excel y ver la realidad de facturación de
+ * cada una. Decisión del usuario (2026-07-31).
+ *
+ * Cada fila compite contra TODOS los productos de El Emporio confirmados
+ * como posible competencia (ver cp_pares_precios_proveedores.distintaMarca)
+ * — a diferencia de obtenerComparacionCriolloEmporio(), acá el precio de El
+ * Criollo/HORECA SÍ es el REAL de la última factura de ESA empresa (no el de
+ * lista): son justamente los productos que más se compran, así que la
+ * última factura es representativa de hoy, no un dato aislado y viejo.
+ * Decisión del usuario (2026-07-30).
  *
  * Antes de rankear, agrupa por nombre limpio (ver limpiarCodigoLoteFactura)
  * porque algunas facturas de productos importados traen un código de
@@ -1155,7 +1165,7 @@ type FilaCandidatoEmporioCruda = {
  * — sin agrupar, el mismo producto real queda partido en 2-4 "productos" y
  * ninguno entra al top.
  */
-export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promise<FilaTop20MasComprado[]> {
+export async function obtenerTopMasCompradosCriolloEmporio(cantidadPorEmpresa = 20): Promise<FilaTop20MasComprado[]> {
   const [criolloId, emporioId] = await Promise.all([
     buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_CRIOLLO),
     buscarProveedorIdPorNombre(NOMBRE_PROVEEDOR_EL_EMPORIO),
@@ -1176,13 +1186,16 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
   `);
   const detalle = resultadoDetalle.rows as FilaDetalleCompraCriolloHoreca[];
 
-  type Grupo = { gasto: number; cantidad: number; masReciente: FilaDetalleCompraCriolloHoreca };
+  // Agrupa por (empresa, nombre limpio) — el mismo producto se rankea aparte
+  // en cada empresa que lo compró.
+  type Grupo = { empresa: string; gasto: number; cantidad: number; masReciente: FilaDetalleCompraCriolloHoreca };
   const grupos = new Map<string, Grupo>();
   for (const f of detalle) {
-    const clave = limpiarCodigoLoteFactura(f.nombre).toLowerCase();
+    const empresa = f.localNombre ?? "Sin asignar";
+    const clave = `${empresa}::${limpiarCodigoLoteFactura(f.nombre).toLowerCase()}`;
     const actual = grupos.get(clave);
     if (!actual) {
-      grupos.set(clave, { gasto: Number(f.subtotal), cantidad: Number(f.cantidad), masReciente: f });
+      grupos.set(clave, { empresa, gasto: Number(f.subtotal), cantidad: Number(f.cantidad), masReciente: f });
     } else {
       actual.gasto += Number(f.subtotal);
       actual.cantidad += Number(f.cantidad);
@@ -1190,28 +1203,32 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
     }
   }
 
-  const ranking = [...grupos.values()]
-    .map((g) => ({ ...g, nombreLimpio: limpiarCodigoLoteFactura(g.masReciente.nombre) }))
-    .sort((a, b) => b.gasto - a.gasto)
-    .slice(0, cantidad);
+  const porEmpresa = new Map<string, (Grupo & { nombreLimpio: string })[]>();
+  for (const g of grupos.values()) {
+    const nombreLimpio = limpiarCodigoLoteFactura(g.masReciente.nombre);
+    const lista = porEmpresa.get(g.empresa) ?? [];
+    lista.push({ ...g, nombreLimpio });
+    porEmpresa.set(g.empresa, lista);
+  }
+
+  const ranking: (Grupo & { nombreLimpio: string; ranking: number })[] = [];
+  for (const items of porEmpresa.values()) {
+    items.sort((a, b) => b.gasto - a.gasto);
+    items.slice(0, cantidadPorEmpresa).forEach((it, i) => ranking.push({ ...it, ranking: i + 1 }));
+  }
+  ranking.sort((a, b) => a.empresa.localeCompare(b.empresa) || a.ranking - b.ranking);
 
   if (ranking.length === 0) return [];
 
   // El nombre de la lista VIGENTE de El Criollo es siempre el nombre limpio
   // (sin código de lote) — ese ruido solo aparece al leer facturas, nunca en
-  // el Excel de lista de precios que se importa aparte.
+  // el Excel de lista de precios que se importa aparte. Deduplicado porque
+  // el mismo producto puede estar en el top de varias empresas.
+  const nombresUnicos = [...new Set(ranking.map((r) => r.nombreLimpio))];
   const listasCriollo = await db
     .select({ id: cpListasPreciosProveedor.id, descripcion: cpListasPreciosProveedor.descripcion })
     .from(cpListasPreciosProveedor)
-    .where(
-      and(
-        eq(cpListasPreciosProveedor.proveedorId, criolloId),
-        inArray(
-          cpListasPreciosProveedor.descripcion,
-          ranking.map((r) => r.nombreLimpio)
-        )
-      )
-    );
+    .where(and(eq(cpListasPreciosProveedor.proveedorId, criolloId), inArray(cpListasPreciosProveedor.descripcion, nombresUnicos)));
   const listaCriolloPorNombre = new Map(listasCriollo.map((l) => [l.descripcion.toLowerCase(), l]));
 
   const idsListaCriollo = listasCriollo.map((l) => l.id);
@@ -1285,10 +1302,8 @@ export async function obtenerTopMasCompradosCriolloEmporio(cantidad = 20): Promi
 
     return {
       nombreCriollo: r.nombreLimpio,
-      // Empresa (restaurante) de la compra más reciente — la misma que fija
-      // "precio actual" y "última compra", no una lista de todas las que
-      // compraron este producto en algún momento.
-      empresa: r.masReciente.localNombre ?? "Sin asignar",
+      empresa: r.empresa,
+      ranking: r.ranking,
       gastoTotal: Math.round(r.gasto),
       cantidadTotal: Math.round(r.cantidad * 100) / 100,
       unidadMedida: r.masReciente.unidadMedida,
