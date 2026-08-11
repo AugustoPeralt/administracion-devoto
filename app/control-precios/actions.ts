@@ -3,6 +3,7 @@
 import { auth } from "@/auth";
 import { db } from "@/db";
 import {
+  cpComparacionesRestaurantesRevisadas,
   cpDetalleFacturas,
   cpFacturas,
   cpFacturasRepetidasRevisadas,
@@ -996,6 +997,75 @@ export async function justificarFacturasPosibleDuplicado(
     });
 
   revalidatePath("/control-precios/proveedores");
+  revalidatePath("/control-precios/reportes");
+}
+
+export type DatosComparacionRestaurantes = {
+  productoId: number;
+  localMasBaratoId: number;
+  precioMinimo: number;
+  fechaMasBarato: string;
+  facturaIdMasBarato: number;
+  localMasCaroId: number;
+  precioMaximo: number;
+  fechaMasCaro: string;
+  facturaIdMasCaro: number;
+  porcentajeDiferencia: number;
+};
+
+/** Archiva un caso de obtenerComparacionEntreRestaurantes() (mismo proveedor,
+ * distinto precio entre restaurantes) para que deje de ocupar la alerta
+ * principal — ver cpComparacionesRestaurantesRevisadas en db/schema.ts para el
+ * criterio de "misma situación" (producto + par de locales, sin importar cuál
+ * es el barato en cada momento). A diferencia de
+ * justificarFacturasPosibleDuplicado, el comentario acá es opcional: no se
+ * está justificando un error, es un "ya lo vi" rápido. */
+export async function confirmarComparacionRestaurantes(
+  datos: DatosComparacionRestaurantes,
+  comentario?: string
+) {
+  const session = await auth();
+  const usuarioEmail = session?.user?.email;
+  if (!usuarioEmail) throw new Error("Tenés que iniciar sesión para confirmar esto.");
+
+  const localAId = Math.min(datos.localMasBaratoId, datos.localMasCaroId);
+  const localBId = Math.max(datos.localMasBaratoId, datos.localMasCaroId);
+
+  await db
+    .insert(cpComparacionesRestaurantesRevisadas)
+    .values({
+      productoId: datos.productoId,
+      localAId,
+      localBId,
+      localMasBaratoId: datos.localMasBaratoId,
+      precioMinimo: datos.precioMinimo.toFixed(2),
+      fechaMasBarato: datos.fechaMasBarato,
+      facturaIdMasBarato: datos.facturaIdMasBarato,
+      localMasCaroId: datos.localMasCaroId,
+      precioMaximo: datos.precioMaximo.toFixed(2),
+      fechaMasCaro: datos.fechaMasCaro,
+      facturaIdMasCaro: datos.facturaIdMasCaro,
+      porcentajeDiferencia: datos.porcentajeDiferencia.toFixed(2),
+      comentario: comentario?.trim() || null,
+      usuarioEmail,
+    })
+    .onConflictDoNothing({
+      target: [
+        cpComparacionesRestaurantesRevisadas.productoId,
+        cpComparacionesRestaurantesRevisadas.localAId,
+        cpComparacionesRestaurantesRevisadas.localBId,
+      ],
+    });
+
+  revalidatePath("/control-precios/reportes");
+}
+
+/** Saca un caso del archivo de comparación entre restaurantes (por si se
+ * confirmó por error) — vuelve a aparecer en la alerta activa si la
+ * diferencia de precio sigue vigente. */
+export async function eliminarComparacionRevisada(id: number) {
+  await requerirSesion();
+  await db.delete(cpComparacionesRestaurantesRevisadas).where(eq(cpComparacionesRestaurantesRevisadas.id, id));
   revalidatePath("/control-precios/reportes");
 }
 

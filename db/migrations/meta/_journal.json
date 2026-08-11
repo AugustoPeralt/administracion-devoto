@@ -211,6 +211,13 @@
       "when": 1786466714052,
       "tag": "0029_overconfident_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786469114399,
+      "tag": "0030_mute_pyro",
+      "breakpoints": true
     }
   ]
 }

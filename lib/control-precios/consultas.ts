@@ -914,10 +914,12 @@ export type ComparacionEntreRestaurantes = {
   productoId: number;
   productoNombre: string;
   proveedorNombre: string;
+  localMasBaratoId: number;
   localMasBarato: string;
   precioMinimo: string;
   fechaMasBarato: string;
   facturaIdMasBarato: number;
+  localMasCaroId: number;
   localMasCaro: string;
   precioMaximo: string;
   fechaMasCaro: string;
@@ -982,9 +984,9 @@ export async function obtenerComparacionEntreRestaurantes(): Promise<Comparacion
     SELECT * FROM (
       SELECT DISTINCT ON (pr.producto_id)
         p.id AS "productoId", p.nombre AS "productoNombre", prov.nombre AS "proveedorNombre",
-        locBarato.nombre AS "localMasBarato", pr.precio_barato AS "precioMinimo",
+        locBarato.id AS "localMasBaratoId", locBarato.nombre AS "localMasBarato", pr.precio_barato AS "precioMinimo",
         pr.fecha_barato AS "fechaMasBarato", pr.factura_barato_id AS "facturaIdMasBarato",
-        locCaro.nombre AS "localMasCaro", pr.precio_caro AS "precioMaximo",
+        locCaro.id AS "localMasCaroId", locCaro.nombre AS "localMasCaro", pr.precio_caro AS "precioMaximo",
         pr.fecha_caro AS "fechaMasCaro", pr.factura_caro_id AS "facturaIdMasCaro",
         ROUND((pr.precio_caro - pr.precio_barato) / pr.precio_barato * 100, 2) AS "porcentajeDiferencia"
       FROM pares pr
@@ -992,12 +994,67 @@ export async function obtenerComparacionEntreRestaurantes(): Promise<Comparacion
       JOIN cp_proveedores prov ON prov.id = p.proveedor_id
       JOIN alq_locales locBarato ON locBarato.id = pr.local_barato_id
       JOIN alq_locales locCaro ON locCaro.id = pr.local_caro_id
+      -- Descarta pares ya archivados desde el panel (ver
+      -- cp_comparaciones_restaurantes_revisadas / obtenerComparacionesRestaurantesRevisadas)
+      -- ANTES de que DISTINCT ON elija el ganador por producto: así, si ese
+      -- producto tiene ADEMÁS un par de locales distinto sin archivar, ese otro
+      -- par sigue pudiendo ganar la selección en vez de que el producto entero
+      -- desaparezca de la alerta.
+      WHERE NOT EXISTS (
+        SELECT 1 FROM cp_comparaciones_restaurantes_revisadas r
+        WHERE r.producto_id = pr.producto_id
+          AND r.local_a_id = LEAST(pr.local_barato_id, pr.local_caro_id)
+          AND r.local_b_id = GREATEST(pr.local_barato_id, pr.local_caro_id)
+      )
       -- por producto, el par válido más reciente; a igual fecha, el de mayor diferencia.
       ORDER BY pr.producto_id, pr.fecha_mas_reciente DESC, (pr.precio_caro - pr.precio_barato) DESC
     ) sub
     ORDER BY "porcentajeDiferencia" DESC
   `);
   return resultado.rows as ComparacionEntreRestaurantes[];
+}
+
+export type ComparacionRestauranteRevisada = {
+  id: number;
+  productoId: number;
+  productoNombre: string;
+  proveedorNombre: string;
+  localMasBarato: string;
+  precioMinimo: string;
+  fechaMasBarato: string;
+  facturaIdMasBarato: number;
+  localMasCaro: string;
+  precioMaximo: string;
+  fechaMasCaro: string;
+  facturaIdMasCaro: number;
+  porcentajeDiferencia: string;
+  comentario: string | null;
+  usuarioEmail: string;
+  creadoEn: string;
+};
+
+/** "Archivo" de obtenerComparacionEntreRestaurantes(): casos que ya se
+ * confirmaron desde el panel (ver confirmarComparacionRestaurantes en
+ * actions.ts) y por eso dejaron de aparecer en la alerta activa. Es una FOTO
+ * de cómo estaba la comparación al momento de confirmar, no se recalcula
+ * contra el estado actual de las facturas — para eso está la alerta activa. */
+export async function obtenerComparacionesRestaurantesRevisadas(): Promise<ComparacionRestauranteRevisada[]> {
+  const resultado = await db.execute(sql`
+    SELECT r.id, r.producto_id AS "productoId", p.nombre AS "productoNombre", prov.nombre AS "proveedorNombre",
+      locBarato.nombre AS "localMasBarato", r.precio_minimo AS "precioMinimo",
+      r.fecha_mas_barato::text AS "fechaMasBarato", r.factura_id_mas_barato AS "facturaIdMasBarato",
+      locCaro.nombre AS "localMasCaro", r.precio_maximo AS "precioMaximo",
+      r.fecha_mas_caro::text AS "fechaMasCaro", r.factura_id_mas_caro AS "facturaIdMasCaro",
+      r.porcentaje_diferencia AS "porcentajeDiferencia", r.comentario,
+      r.usuario_email AS "usuarioEmail", r.creado_en::text AS "creadoEn"
+    FROM cp_comparaciones_restaurantes_revisadas r
+    JOIN cp_productos p ON p.id = r.producto_id
+    JOIN cp_proveedores prov ON prov.id = p.proveedor_id
+    JOIN alq_locales locBarato ON locBarato.id = r.local_mas_barato_id
+    JOIN alq_locales locCaro ON locCaro.id = r.local_mas_caro_id
+    ORDER BY r.creado_en DESC
+  `);
+  return resultado.rows as ComparacionRestauranteRevisada[];
 }
 
 export type ItemPendienteDePrecio = {

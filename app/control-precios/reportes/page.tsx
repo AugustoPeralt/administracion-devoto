@@ -1,11 +1,12 @@
-import Link from "next/link";
 import { KpiTile } from "@/components/KpiTile";
 import { FiltrosReportePrecios } from "@/components/FiltrosReportePrecios";
+import { TablaComparacionRestaurantes } from "@/components/TablaComparacionRestaurantes";
 import { TablaDeltaPreciosPorProveedor } from "@/components/TablaDeltaPreciosPorProveedor";
 import { TablaHistorialCompras } from "@/components/TablaHistorialCompras";
 import { formatoFecha, formatoMoneda } from "@/lib/formato";
 import {
   obtenerComparacionEntreRestaurantes,
+  obtenerComparacionesRestaurantesRevisadas,
   obtenerDeltaPrecios,
   obtenerGastoPorCategoria,
   obtenerGastoTotalPeriodo,
@@ -14,7 +15,6 @@ import {
   obtenerProveedores,
   parseLocalIds,
   quincenaActual,
-  type ComparacionEntreRestaurantes,
 } from "@/lib/control-precios/consultas";
 import { UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
@@ -37,16 +37,25 @@ export default async function ReportePreciosPage({
 
   const filtros = { desde, hasta, localIds, proveedorId, categoria };
 
-  const [locales, proveedores, deltas, gastoTotal, gastoPorCategoria, comparacionRestaurantes, historialCompras] =
-    await Promise.all([
-      obtenerLocales(),
-      obtenerProveedores(),
-      obtenerDeltaPrecios(filtros),
-      obtenerGastoTotalPeriodo(filtros),
-      obtenerGastoPorCategoria(filtros),
-      obtenerComparacionEntreRestaurantes(),
-      obtenerHistorialComprasPorProducto(filtros),
-    ]);
+  const [
+    locales,
+    proveedores,
+    deltas,
+    gastoTotal,
+    gastoPorCategoria,
+    comparacionRestaurantes,
+    comparacionesRestaurantesRevisadas,
+    historialCompras,
+  ] = await Promise.all([
+    obtenerLocales(),
+    obtenerProveedores(),
+    obtenerDeltaPrecios(filtros),
+    obtenerGastoTotalPeriodo(filtros),
+    obtenerGastoPorCategoria(filtros),
+    obtenerComparacionEntreRestaurantes(),
+    obtenerComparacionesRestaurantesRevisadas(),
+    obtenerHistorialComprasPorProducto(filtros),
+  ]);
 
   const conAumento = deltas.filter((d) => d.porcentajeAumento !== null);
   const alertas = conAumento.filter((d) => Number(d.porcentajeAumento) >= UMBRAL_ALERTA);
@@ -119,38 +128,7 @@ export default async function ReportePreciosPage({
         </div>
       )}
 
-      {comparacionRestaurantes.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-rose-200 bg-rose-50 shadow-sm">
-          <div className="px-4 pt-3">
-            <h2 className="text-sm font-semibold text-rose-900">
-              Mismo proveedor, distinto precio entre restaurantes ({comparacionRestaurantes.length})
-            </h2>
-            <p className="mb-2 text-xs text-rose-700">
-              Compara el último precio conocido por restaurante — solo cuando las dos compras están a una semana o
-              menos de diferencia entre sí, para no confundir un precio distinto con un dato desactualizado. Podés
-              abrir el comprobante de cada lado para comparar a simple vista.
-            </p>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="text-left text-rose-700">
-              <tr>
-                <th className="px-3 py-2">Producto</th>
-                <th className="px-3 py-2">Proveedor</th>
-                <th className="px-3 py-2">Más barato en</th>
-                <th className="px-3 py-2 text-right">Precio</th>
-                <th className="px-3 py-2">Más caro en</th>
-                <th className="px-3 py-2 text-right">Precio</th>
-                <th className="px-3 py-2 text-right">Diferencia</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparacionRestaurantes.map((c) => (
-                <FilaComparacionRestaurantes key={c.productoId} c={c} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <TablaComparacionRestaurantes activos={comparacionRestaurantes} archivados={comparacionesRestaurantesRevisadas} />
 
       <TablaDeltaPreciosPorProveedor deltas={deltas} umbralAlerta={UMBRAL_ALERTA} />
 
@@ -174,55 +152,5 @@ export default async function ReportePreciosPage({
         <TablaHistorialCompras filas={historialCompras} />
       </div>
     </div>
-  );
-}
-
-function FilaComparacionRestaurantes({ c }: { c: ComparacionEntreRestaurantes }) {
-  return (
-    <tr className="border-t border-rose-100">
-      <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-900">{c.productoNombre}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-slate-600">{c.proveedorNombre}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-        <div>{c.localMasBarato}</div>
-        <div className="text-xs text-slate-400">{formatoFecha(c.fechaMasBarato)}</div>
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right">
-        <div className="font-mono tabular-nums text-emerald-600">{formatoMoneda(c.precioMinimo)}</div>
-        <a
-          href={`/api/control-precios/ver-comprobante/${c.facturaIdMasBarato}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-slate-500 underline hover:text-slate-900"
-        >
-          Ver factura
-        </a>
-        {" · "}
-        <Link href={`/control-precios/facturas/${c.facturaIdMasBarato}`} className="text-xs text-slate-500 underline hover:text-slate-900">
-          Corregir
-        </Link>
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-        <div>{c.localMasCaro}</div>
-        <div className="text-xs text-slate-400">{formatoFecha(c.fechaMasCaro)}</div>
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right">
-        <div className="font-mono tabular-nums text-rose-600">{formatoMoneda(c.precioMaximo)}</div>
-        <a
-          href={`/api/control-precios/ver-comprobante/${c.facturaIdMasCaro}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-slate-500 underline hover:text-slate-900"
-        >
-          Ver factura
-        </a>
-        {" · "}
-        <Link href={`/control-precios/facturas/${c.facturaIdMasCaro}`} className="text-xs text-slate-500 underline hover:text-slate-900">
-          Corregir
-        </Link>
-      </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-rose-700">
-        +{c.porcentajeDiferencia}%
-      </td>
-    </tr>
   );
 }

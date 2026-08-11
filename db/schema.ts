@@ -784,3 +784,63 @@ export const cpFacturasRepetidasRevisadas = pgTable(
   },
   (t) => [uniqueIndex("cp_facturas_repetidas_ids_idx").on(t.facturaIds)]
 );
+
+/**
+ * Marca un producto + par de restaurantes como revisado en
+ * obtenerComparacionEntreRestaurantes() (mismo proveedor, distinto precio entre
+ * restaurantes) — para que deje de ocupar la alerta principal aunque sigan
+ * llegando facturas nuevas de ese mismo par, sin perder el dato (queda en el
+ * "archivo" que lee obtenerComparacionesRestaurantesRevisadas()).
+ *
+ * localAId/localBId guardan el par de locales SIN orden (LEAST/GREATEST de los
+ * dos ids) — es la clave de "misma situación", independiente de cuál de los
+ * dos sea el más barato en cada momento. Si más adelante la diferencia de
+ * precio para ese producto aparece entre un par de locales DISTINTO, ya no
+ * matchea esta fila y vuelve a aparecer como alerta nueva — mismo criterio que
+ * cpFacturasRepetidasRevisadas (no arrastrar una resolución vieja sobre una
+ * situación que cambió de composición).
+ *
+ * El resto de las columnas (localMasBaratoId, precioMinimo, ..., porcentajeDiferencia)
+ * son una FOTO de la comparación al momento de confirmar, para poder mostrarla
+ * en el archivo sin recalcular contra el estado actual de las facturas.
+ *
+ * comentario es NULLABLE a propósito (a diferencia de cpFacturasRepetidasRevisadas,
+ * que lo exige): acá no se está justificando un error de carga, es solo un
+ * "ya lo vi" rápido — pedir una explicación sería fricción de más.
+ */
+export const cpComparacionesRestaurantesRevisadas = pgTable(
+  "cp_comparaciones_restaurantes_revisadas",
+  {
+    id: serial("id").primaryKey(),
+    productoId: integer("producto_id")
+      .notNull()
+      .references(() => cpProductos.id, { onDelete: "cascade" }),
+    localAId: integer("local_a_id")
+      .notNull()
+      .references(() => alqLocales.id),
+    localBId: integer("local_b_id")
+      .notNull()
+      .references(() => alqLocales.id),
+    localMasBaratoId: integer("local_mas_barato_id")
+      .notNull()
+      .references(() => alqLocales.id),
+    precioMinimo: numeric("precio_minimo", { precision: 18, scale: 2 }).notNull(),
+    fechaMasBarato: date("fecha_mas_barato").notNull(),
+    facturaIdMasBarato: integer("factura_id_mas_barato")
+      .notNull()
+      .references(() => cpFacturas.id),
+    localMasCaroId: integer("local_mas_caro_id")
+      .notNull()
+      .references(() => alqLocales.id),
+    precioMaximo: numeric("precio_maximo", { precision: 18, scale: 2 }).notNull(),
+    fechaMasCaro: date("fecha_mas_caro").notNull(),
+    facturaIdMasCaro: integer("factura_id_mas_caro")
+      .notNull()
+      .references(() => cpFacturas.id),
+    porcentajeDiferencia: numeric("porcentaje_diferencia", { precision: 6, scale: 2 }).notNull(),
+    comentario: text("comentario"),
+    usuarioEmail: text("usuario_email").notNull(),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_comparaciones_revisadas_par_idx").on(t.productoId, t.localAId, t.localBId)]
+);
