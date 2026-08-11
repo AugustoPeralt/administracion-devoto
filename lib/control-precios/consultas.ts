@@ -1,8 +1,13 @@
 import { db } from "@/db";
-import { alqLocales, cpListasPreciosProveedor, cpProveedores } from "@/db/schema";
+import { alqLocales, cpFacturasRepetidasRevisadas, cpListasPreciosProveedor, cpProveedores } from "@/db/schema";
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
-import { limpiarCodigoLoteFactura, sonNombresSimilares } from "@/lib/control-precios/normalizar";
+import {
+  limpiarCodigoLoteFactura,
+  normalizarCuit,
+  normalizarNombreProducto,
+  sonNombresSimilares,
+} from "@/lib/control-precios/normalizar";
 import {
   DESCUENTO_LISTA_EL_CRIOLLO,
   DIAS_MAX_DIFERENCIA_COMPARACION_RESTAURANTES,
@@ -167,12 +172,33 @@ function agruparPorNombreSimilar<T extends { id: number; nombre: string }>(eleme
   return grupos;
 }
 
-/** Agrupa proveedores que probablemente sean el mismo. Heurística para sugerir en
- * la UI — la decisión de fusionar la toma siempre la persona. */
+/** Agrupa proveedores que probablemente sean el mismo, combinando DOS señales
+ * independientes (mismo criterio de merge que obtenerFacturasPosibleDuplicado(),
+ * ver fusionarGruposPorIdsComunes): nombre similar (sonNombresSimilares), y CUIT
+ * igual una vez normalizado a solo dígitos (ver normalizarCuit) — esta segunda
+ * señal agarra el caso de dos proveedores cargados con el mismo CUIT pero
+ * distinto formato (ej. "33-xxxxxxxx-x" vs "33xxxxxxxxx") de ANTES de que
+ * buscarOCrearProveedor empezara a normalizar el CUIT al guardar, que por nombre
+ * solo capaz no matchea (ver sonNombresSimilares). Heurística para sugerir en la
+ * UI — la decisión de fusionar la toma siempre la persona. */
 export function agruparPosiblesDuplicados(
   proveedores: ProveedorConTotales[]
 ): ProveedorConTotales[][] {
-  return agruparPorNombreSimilar(proveedores);
+  const gruposPorNombre = agruparPorNombreSimilar(proveedores).map((g) => g.map((p) => p.id));
+
+  const idsPorCuit = new Map<string, number[]>();
+  for (const p of proveedores) {
+    if (!p.cuit) continue;
+    const cuit = normalizarCuit(p.cuit);
+    if (cuit.length !== 11) continue; // CUIT ilegible/incompleto, no es señal confiable
+    idsPorCuit.set(cuit, [...(idsPorCuit.get(cuit) ?? []), p.id]);
+  }
+  const gruposPorCuit = [...idsPorCuit.values()].filter((ids) => ids.length > 1);
+
+  const porId = new Map(proveedores.map((p) => [p.id, p]));
+  return fusionarGruposPorIdsComunes([...gruposPorNombre, ...gruposPorCuit]).map((ids) =>
+    ids.map((id) => porId.get(id)!)
+  );
 }
 
 export type ProductoConTotales = {
@@ -248,6 +274,217 @@ export async function obtenerFacturasConFechaSospechosa(): Promise<FacturaFechaS
   return resultado.rows as FacturaFechaSospechosa[];
 }
 
+export type FacturaCandidataDuplicado = {
+  id: number;
+  fechaEmision: string;
+  montoTotal: string;
+  numeroFactura: string | null;
+  archivoUrl: string | null;
+};
+
+export type GrupoFacturaPosibleDuplicado = {
+  proveedorId: number;
+  proveedorNombre: string;
+  localId: number | null;
+  localNombre: string | null;
+  facturaIds: number[]; // ordenados asc — es la clave del caso, ver cpFacturasRepetidasRevisadas
+  itemsComunesMaximo: number; // 0-100: mayor % de ítems en común entre dos facturas cualquiera del grupo
+  facturas: FacturaCandidataDuplicado[];
+};
+
+/**
+ * Une arrays de ids que se solapan en un mismo cluster (union-find). Ej.
+ * [[1,2],[2,3],[5,6]] -> [[1,2,3],[5,6]] (1,2,3 quedan juntos porque 2 aparece
+ * en los dos primeros grupos). Pura y sin IO a propósito, para poder testear
+ * la lógica de merge de obtenerFacturasPosibleDuplicado() sin la base — esa
+ * función junta candidatos de DOS detecciones independientes (mismo número de
+ * comprobante, y mismo proveedor+local+fecha+monto) que a veces comparten una
+ * factura y hay que fusionar en un solo caso para no revisarlo dos veces.
+ */
+export function fusionarGruposPorIdsComunes(grupos: number[][]): number[][] {
+  const padre = new Map<number, number>();
+  function encontrar(x: number): number {
+    if (!padre.has(x)) padre.set(x, x);
+    let raiz = x;
+    while (padre.get(raiz) !== raiz) raiz = padre.get(raiz)!;
+    padre.set(x, raiz);
+    return raiz;
+  }
+  function unir(a: number, b: number) {
+    const ra = encontrar(a);
+    const rb = encontrar(b);
+    if (ra !== rb) padre.set(ra, rb);
+  }
+
+  for (const grupo of grupos) {
+    for (let i = 1; i < grupo.length; i++) unir(grupo[0], grupo[i]);
+  }
+
+  const clusters = new Map<number, Set<number>>();
+  for (const grupo of grupos) {
+    for (const id of grupo) {
+      const raiz = encontrar(id);
+      if (!clusters.has(raiz)) clusters.set(raiz, new Set());
+      clusters.get(raiz)!.add(id);
+    }
+  }
+
+  return [...clusters.values()].map((s) => [...s].sort((a, b) => a - b));
+}
+
+/**
+ * Mayor % de ítems (nombre+cantidad+precio_unitario) que comparten dos
+ * facturas cualquiera del grupo, sobre el total de ítems de la más chica de
+ * las dos — pura señal de confianza para que la persona que revisa decida más
+ * rápido, nunca decide sola. Cerca de 100% = casi seguro la misma foto subida
+ * dos veces (verificado con casos reales: 100%, 94%, 92%...). Cerca de 0% =
+ * casi seguro páginas distintas de un mismo comprobante multipágina
+ * (verificado con El Criollo 0009-00701278: 0% en común, dos páginas reales).
+ */
+export function overlapMaximoDeItems(itemsPorFactura: Map<number, string[]>, ids: number[]): number {
+  let maximo = 0;
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = new Set(itemsPorFactura.get(ids[i]) ?? []);
+      const b = new Set(itemsPorFactura.get(ids[j]) ?? []);
+      if (a.size === 0 || b.size === 0) continue;
+      let comunes = 0;
+      for (const linea of a) if (b.has(linea)) comunes++;
+      const ratio = comunes / Math.min(a.size, b.size);
+      if (ratio > maximo) maximo = ratio;
+    }
+  }
+  return Math.round(maximo * 100);
+}
+
+/**
+ * Detecta "casos" de facturas posiblemente cargadas por error más de una vez,
+ * combinando DOS señales independientes (una factura puede caer en las dos, se
+ * fusionan en un solo caso con fusionarGruposPorIdsComunes):
+ *
+ * 1. Mismo proveedor+local+número de comprobante (normalizado, sin
+ *    espacios/guiones) con más de una fila con monto_total > 0 — el síntoma
+ *    real es una factura de varias páginas donde solo la última trae el TOTAL
+ *    impreso real: las páginas anteriores quedan con su propio subtotal
+ *    parcial en vez de $0, y al sumar por proveedor/mes se cuenta de más.
+ *    Confirmado con un caso real: Distribuidora El Criollo SRL, comprobante
+ *    0009-00701278, MECHA 01/06/2026 — 0% de ítems en común entre las dos
+ *    filas (páginas con productos distintos), o sea una factura multipágina
+ *    real, no una foto repetida.
+ * 2. Mismo proveedor+local+fecha+monto_total EXACTO, con o sin número de
+ *    comprobante — la señal más fuerte de una foto subida dos veces por
+ *    error. A diferencia del punto 1, acá SÍ importa el % de ítems en común
+ *    (ver overlapMaximoDeItems): confirmado con 11 casos reales entre 92% y
+ *    100% de ítems idénticos, casi seguro la misma factura cargada dos veces
+ *    (a veces con foto distinta — un archivo en Vercel Blob y otro en R2 del
+ *    mismo papel re-subido). Esta señal además agarra facturas SIN número de
+ *    comprobante legible, que el punto 1 no puede ver.
+ *
+ * Ninguna de las dos señales corrige sola — se listan para revisión humana
+ * con la foto de cada factura y el % de ítems en común como pista, igual que
+ * obtenerFacturasConFechaSospechosa(). Ver justificarFacturasPosibleDuplicado()
+ * en actions.ts para marcar un caso como revisado y sin problema.
+ */
+export async function obtenerFacturasPosibleDuplicado(): Promise<GrupoFacturaPosibleDuplicado[]> {
+  const porNumero = await db.execute(sql`
+    SELECT array_agg(f.id ORDER BY f.id) as ids
+    FROM cp_facturas f
+    WHERE f.numero_factura IS NOT NULL AND f.monto_total > 0
+    GROUP BY f.proveedor_id, f.local_id, regexp_replace(upper(f.numero_factura), '[- ]', '', 'g')
+    HAVING count(*) > 1
+  `);
+  const porMonto = await db.execute(sql`
+    SELECT array_agg(f.id ORDER BY f.id) as ids
+    FROM cp_facturas f
+    WHERE f.monto_total > 0
+    GROUP BY f.proveedor_id, f.local_id, f.fecha_emision, f.monto_total
+    HAVING count(*) > 1
+  `);
+
+  const gruposCrudo = [
+    ...(porNumero.rows as { ids: number[] }[]).map((r) => r.ids),
+    ...(porMonto.rows as { ids: number[] }[]).map((r) => r.ids),
+  ];
+  const clusters = fusionarGruposPorIdsComunes(gruposCrudo);
+  if (clusters.length === 0) return [];
+
+  const todosLosIdsLit = literalArrayInt(clusters.flat())!;
+
+  const facturasResultado = await db.execute(sql`
+    SELECT f.id, f.proveedor_id AS "proveedorId", prov.nombre AS "proveedorNombre",
+      f.local_id AS "localId", loc.nombre AS "localNombre",
+      f.fecha_emision::text AS "fechaEmision", f.monto_total::text AS "montoTotal",
+      f.numero_factura AS "numeroFactura", f.archivo_url AS "archivoUrl"
+    FROM cp_facturas f
+    JOIN cp_proveedores prov ON prov.id = f.proveedor_id
+    LEFT JOIN alq_locales loc ON loc.id = f.local_id
+    WHERE f.id = ANY(${todosLosIdsLit}::int[])
+  `);
+  type FilaFactura = {
+    id: number;
+    proveedorId: number;
+    proveedorNombre: string;
+    localId: number | null;
+    localNombre: string | null;
+    fechaEmision: string;
+    montoTotal: string;
+    numeroFactura: string | null;
+    archivoUrl: string | null;
+  };
+  const facturaPorId = new Map((facturasResultado.rows as FilaFactura[]).map((f) => [f.id, f]));
+
+  const detalleResultado = await db.execute(sql`
+    SELECT d.factura_id AS "facturaId", pr.nombre AS "productoNombre", d.cantidad, d.precio_unitario AS "precioUnitario"
+    FROM cp_detalle_facturas d
+    JOIN cp_productos pr ON pr.id = d.producto_id
+    WHERE d.factura_id = ANY(${todosLosIdsLit}::int[])
+  `);
+  // Normaliza el nombre del producto (igual que buscarOCrearProducto) antes de armar
+  // la clave de comparación: sin esto, la misma foto subida dos veces puede terminar
+  // vinculada a dos filas de cp_productos con nombres levemente distintos (mayúsculas,
+  // espacios, un carácter que la IA leyó distinto la segunda vez) y el overlap da 0%
+  // aunque sea literalmente el mismo comprobante — confirmado con 3 casos reales.
+  const itemsPorFactura = new Map<number, string[]>();
+  for (const fila of detalleResultado.rows as {
+    facturaId: number;
+    productoNombre: string;
+    cantidad: string;
+    precioUnitario: string | null;
+  }[]) {
+    const clave = `${normalizarNombreProducto(fila.productoNombre)}|${fila.cantidad}|${fila.precioUnitario}`;
+    if (!itemsPorFactura.has(fila.facturaId)) itemsPorFactura.set(fila.facturaId, []);
+    itemsPorFactura.get(fila.facturaId)!.push(clave);
+  }
+
+  const revisados = await db.select().from(cpFacturasRepetidasRevisadas);
+  const clavesJustificadas = new Set(revisados.filter((r) => r.estado === "justificado").map((r) => r.facturaIds));
+
+  return clusters
+    .filter((ids) => !clavesJustificadas.has(ids.join(",")))
+    .map((ids) => {
+      const primero = facturaPorId.get(ids[0])!;
+      return {
+        proveedorId: primero.proveedorId,
+        proveedorNombre: primero.proveedorNombre,
+        localId: primero.localId,
+        localNombre: primero.localNombre,
+        facturaIds: ids,
+        itemsComunesMaximo: overlapMaximoDeItems(itemsPorFactura, ids),
+        facturas: ids.map((id) => {
+          const f = facturaPorId.get(id)!;
+          return {
+            id,
+            fechaEmision: f.fechaEmision,
+            montoTotal: f.montoTotal,
+            numeroFactura: f.numeroFactura,
+            archivoUrl: f.archivoUrl,
+          };
+        }),
+      };
+    })
+    .sort((a, b) => a.proveedorNombre.localeCompare(b.proveedorNombre));
+}
+
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -311,8 +548,10 @@ export type FilaDeltaPrecio = {
   localNombre: string | null;
   precioBase: string | null;
   fechaBase: string | null;
+  facturaIdBase: number | null;
   precioActual: string;
   fechaActual: string;
+  facturaIdActual: number;
   porcentajeAumento: string | null;
 };
 
@@ -339,7 +578,7 @@ export async function obtenerDeltaPrecios(
   const resultado = await ejecutor.execute(sql`
     WITH primero_periodo AS (
       SELECT DISTINCT ON (df.producto_id, f.local_id)
-        df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha
+        df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha, f.id AS factura_id
       FROM cp_detalle_facturas df
       JOIN cp_facturas f ON f.id = df.factura_id
       WHERE df.precio_unitario IS NOT NULL AND f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
@@ -347,7 +586,7 @@ export async function obtenerDeltaPrecios(
     ),
     ultimo_periodo AS (
       SELECT DISTINCT ON (df.producto_id, f.local_id)
-        df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha,
+        df.producto_id, f.local_id, df.precio_unitario AS precio, f.fecha_emision AS fecha, f.id AS factura_id,
         p.nombre AS producto_nombre, p.unidad_medida,
         prov.id AS proveedor_id, prov.nombre AS proveedor_nombre, prov.categoria
       FROM cp_detalle_facturas df
@@ -368,8 +607,10 @@ export async function obtenerDeltaPrecios(
       loc.nombre AS "localNombre",
       pp.precio AS "precioBase",
       pp.fecha AS "fechaBase",
+      pp.factura_id AS "facturaIdBase",
       up.precio AS "precioActual",
       up.fecha AS "fechaActual",
+      up.factura_id AS "facturaIdActual",
       CASE
         WHEN pp.precio IS NOT NULL AND pp.precio > 0 AND up.precio IS DISTINCT FROM pp.precio
         THEN ROUND(((up.precio - pp.precio) / pp.precio) * 100, 2)
@@ -770,9 +1011,9 @@ export type ItemPendienteDePrecio = {
   fechaEmision: string;
 };
 
-/** Ítems ya confirmados que se quedaron sin precio (VERDULERIA sin match en la
- * referencia de 5cynar, u otro caso manual) — la factura queda en
- * 'pendiente_revision' hasta que se les asigne un precio acá. */
+/** Ítems ya confirmados que se quedaron sin precio (típico de un remito de
+ * VERDULERIA sin precio impreso) — la factura queda en 'pendiente_revision'
+ * hasta que se les asigne un precio acá. */
 export async function obtenerItemsPendientesDePrecio(): Promise<ItemPendienteDePrecio[]> {
   const resultado = await db.execute(sql`
     SELECT df.id AS "detalleId", df.factura_id AS "facturaId", p.nombre AS "productoNombre",
@@ -1559,5 +1800,71 @@ export async function obtenerSustitutosParaListaIds(listaIds: number[]): Promise
     })
   );
   return resultado;
+}
+
+export type ItemFacturaDetalle = {
+  detalleId: number;
+  productoId: number;
+  productoNombre: string;
+  unidadMedida: string;
+  cantidad: string;
+  precioUnitario: string | null;
+  descuento: string | null;
+  subtotal: string | null;
+  subtotalImpreso: string | null;
+  ivaPorcentaje: string | null;
+  precioOrigen: string;
+  verificadoManual: boolean;
+};
+
+export type FacturaConDetalle = {
+  id: number;
+  proveedorId: number;
+  proveedorNombre: string;
+  localId: number | null;
+  localNombre: string | null;
+  fechaEmision: string;
+  montoTotal: string | null;
+  archivoUrl: string | null;
+  estado: string;
+  numeroFactura: string | null;
+  items: ItemFacturaDetalle[];
+};
+
+/**
+ * Cabecera + ítems de UNA factura ya guardada (confirmada o pendiente_revision),
+ * para la pantalla de corrección /control-precios/facturas/[id] — a diferencia
+ * de EditorFacturaExtraida (que edita una factura recién extraída, todavía sin
+ * guardar), esto lee lo que ya está persistido para poder corregirlo con
+ * corregirItemFacturaConfirmada() sin tener que volver a subir la foto. Null si
+ * no existe esa factura.
+ */
+export async function obtenerFacturaConDetalle(facturaId: number): Promise<FacturaConDetalle | null> {
+  const facturaResultado = await db.execute(sql`
+    SELECT f.id, f.proveedor_id AS "proveedorId", prov.nombre AS "proveedorNombre",
+      f.local_id AS "localId", loc.nombre AS "localNombre",
+      f.fecha_emision::text AS "fechaEmision", f.monto_total::text AS "montoTotal",
+      f.archivo_url AS "archivoUrl", f.estado, f.numero_factura AS "numeroFactura"
+    FROM cp_facturas f
+    JOIN cp_proveedores prov ON prov.id = f.proveedor_id
+    LEFT JOIN alq_locales loc ON loc.id = f.local_id
+    WHERE f.id = ${facturaId}
+  `);
+  const factura = facturaResultado.rows[0] as Omit<FacturaConDetalle, "items"> | undefined;
+  if (!factura) return null;
+
+  const itemsResultado = await db.execute(sql`
+    SELECT df.id AS "detalleId", df.producto_id AS "productoId", p.nombre AS "productoNombre",
+      p.unidad_medida AS "unidadMedida", df.cantidad, df.precio_unitario AS "precioUnitario",
+      df.descuento, df.subtotal, df.subtotal_impreso AS "subtotalImpreso",
+      df.iva_porcentaje AS "ivaPorcentaje", df.precio_origen AS "precioOrigen",
+      df.verificado_manual AS "verificadoManual"
+    FROM cp_detalle_facturas df
+    JOIN cp_productos p ON p.id = df.producto_id
+    WHERE df.factura_id = ${facturaId}
+    ORDER BY df.id
+  `);
+
+  return { ...factura, items: itemsResultado.rows as ItemFacturaDetalle[] };
 }
 

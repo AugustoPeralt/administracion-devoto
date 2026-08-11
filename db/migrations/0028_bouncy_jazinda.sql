@@ -1,0 +1,1 @@
+ALTER TABLE "cp_facturas" ALTER COLUMN "monto_total" DROP NOT NULL;

@@ -1,4 +1,5 @@
 import { FacturasFechaSospechosaPanel } from "@/components/FacturasFechaSospechosaPanel";
+import { FacturasNumeroRepetidoPanel } from "@/components/FacturasNumeroRepetidoPanel";
 import { FusionarProductosPanel } from "@/components/FusionarProductosPanel";
 import { FusionarProveedoresPanel } from "@/components/FusionarProveedoresPanel";
 import { ItemsPendientesDePrecioPanel } from "@/components/ItemsPendientesDePrecioPanel";
@@ -8,6 +9,7 @@ import {
   agruparPosiblesDuplicados,
   agruparPosiblesProductosDuplicados,
   obtenerFacturasConFechaSospechosa,
+  obtenerFacturasPosibleDuplicado,
   obtenerItemsPendientesDePrecio,
   obtenerItemsPrecioCero,
   obtenerProductosConTotales,
@@ -15,13 +17,15 @@ import {
 } from "@/lib/control-precios/consultas";
 
 export default async function ProveedoresPage() {
-  const [proveedores, productos, facturasSospechosas, itemsPendientes, itemsPrecioCero] = await Promise.all([
-    obtenerProveedoresConTotales(),
-    obtenerProductosConTotales(),
-    obtenerFacturasConFechaSospechosa(),
-    obtenerItemsPendientesDePrecio(),
-    obtenerItemsPrecioCero(),
-  ]);
+  const [proveedores, productos, facturasSospechosas, facturasDuplicadas, itemsPendientes, itemsPrecioCero] =
+    await Promise.all([
+      obtenerProveedoresConTotales(),
+      obtenerProductosConTotales(),
+      obtenerFacturasConFechaSospechosa(),
+      obtenerFacturasPosibleDuplicado(),
+      obtenerItemsPendientesDePrecio(),
+      obtenerItemsPrecioCero(),
+    ]);
   const gruposProveedores = agruparPosiblesDuplicados(proveedores);
   const gruposProductos = agruparPosiblesProductosDuplicados(productos);
 
@@ -29,6 +33,7 @@ export default async function ProveedoresPage() {
     gruposProveedores.length === 0 &&
     gruposProductos.length === 0 &&
     facturasSospechosas.length === 0 &&
+    facturasDuplicadas.length === 0 &&
     itemsPendientes.length === 0 &&
     itemsPrecioCero.length === 0;
 
@@ -52,6 +57,7 @@ export default async function ProveedoresPage() {
       <ItemsPendientesDePrecioPanel items={itemsPendientes} />
       <ItemsPrecioCeroPanel items={itemsPrecioCero} />
       <FacturasFechaSospechosaPanel facturas={facturasSospechosas} />
+      <FacturasNumeroRepetidoPanel grupos={facturasDuplicadas} />
       <FusionarProveedoresPanel proveedores={proveedores} gruposSugeridos={gruposProveedores} />
       <FusionarProductosPanel gruposSugeridos={gruposProductos} />
 

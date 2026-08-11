@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   normalizarNombreProducto,
+  normalizarCuit,
   primerDiaDelMes,
   nombreBaseComercial,
   sonNombresSimilares,
@@ -130,4 +131,9 @@ test("esCuitValido: rechaza un dígito verificador incorrecto", () => {
 test("esCuitValido: rechaza longitudes inválidas", () => {
   assert.equal(esCuitValido("20-1234-6"), false);
   assert.equal(esCuitValido(""), false);
+});
+
+test("normalizarCuit: dos formatos del mismo CUIT normalizan al mismo string", () => {
+  assert.equal(normalizarCuit("33-71040443-9"), normalizarCuit("33710404439"));
+  assert.equal(normalizarCuit("33 71040443 9"), "33710404439");
 });

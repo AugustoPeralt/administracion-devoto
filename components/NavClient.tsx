@@ -34,7 +34,6 @@ const MODULOS: Record<string, ModuloNav> = {
       { href: "/control-precios/comparacion", label: "Comparar proveedores" },
       { href: "/control-precios/reportes", label: "Reporte de precios" },
       { href: "/control-precios/proveedores", label: "Calidad de datos" },
-      { href: "/control-precios/verduleria", label: "Precios verdulería" },
     ],
   },
 };

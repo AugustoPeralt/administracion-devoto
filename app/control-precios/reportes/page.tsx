@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { KpiTile } from "@/components/KpiTile";
 import { FiltrosReportePrecios } from "@/components/FiltrosReportePrecios";
 import { TablaDeltaPreciosPorProveedor } from "@/components/TablaDeltaPreciosPorProveedor";
@@ -195,6 +196,10 @@ function FilaComparacionRestaurantes({ c }: { c: ComparacionEntreRestaurantes })
         >
           Ver factura
         </a>
+        {" · "}
+        <Link href={`/control-precios/facturas/${c.facturaIdMasBarato}`} className="text-xs text-slate-500 underline hover:text-slate-900">
+          Corregir
+        </Link>
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-slate-600">
         <div>{c.localMasCaro}</div>
@@ -210,6 +215,10 @@ function FilaComparacionRestaurantes({ c }: { c: ComparacionEntreRestaurantes })
         >
           Ver factura
         </a>
+        {" · "}
+        <Link href={`/control-precios/facturas/${c.facturaIdMasCaro}`} className="text-xs text-slate-500 underline hover:text-slate-900">
+          Corregir
+        </Link>
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-rose-700">
         +{c.porcentajeDiferencia}%

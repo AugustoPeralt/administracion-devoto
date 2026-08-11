@@ -1,8 +1,8 @@
 /**
- * Usado tanto al importar el Excel de 5cynar (cpPreciosReferenciaVerduleria) como al
- * confirmar una factura (buscarOCrearProducto / resolverPrecioVerduleria) — si los
- * dos lados no normalizan exactamente igual, el cruce de precios de VERDULERIA falla
- * en silencio (nunca matchea) en vez de tirar un error visible.
+ * Usado al confirmar una factura (buscarOCrearProducto) y al comparar ítems entre
+ * facturas (obtenerFacturasPosibleDuplicado) — normaliza acentos/mayúsculas/
+ * espacios para que la misma descripción de producto, leída dos veces con
+ * variantes menores, matchee siempre igual.
  */
 export function normalizarNombreProducto(nombre: string): string {
   return nombre
@@ -244,6 +244,18 @@ export function sonSustitutosPorMarca(a: string, b: string): boolean {
 }
 
 /**
+ * "33-xxxxxxxx-x" / "33 xxxxxxxx x" / "33xxxxxxxxx" -> "33xxxxxxxxx" (solo
+ * dígitos). Usado antes de guardar o comparar un CUIT (ver buscarOCrearProveedor
+ * en actions.ts) para que el mismo proveedor real no quede duplicado solo porque
+ * una factura se leyó con guiones y otra sin guiones — el `eq()` de Postgres es
+ * comparación exacta de string, no entiende que son "el mismo" CUIT si no se
+ * normalizan primero los dos lados igual.
+ */
+export function normalizarCuit(cuit: string): string {
+  return cuit.replace(/\D/g, "");
+}
+
+/**
  * Valida el dígito verificador de un CUIT argentino (algoritmo módulo 11 de
  * AFIP). Tolerante a guiones/espacios en la entrada. No confirma que el CUIT
  * exista de verdad (para eso haría falta consultar a AFIP) — solo descarta los
@@ -252,7 +264,7 @@ export function sonSustitutosPorMarca(a: string, b: string): boolean {
  * un CUIT inválido se trata como si no se hubiera leído ningún CUIT).
  */
 export function esCuitValido(cuit: string): boolean {
-  const digitos = cuit.replace(/\D/g, "");
+  const digitos = normalizarCuit(cuit);
   if (digitos.length !== 11) return false;
 
   const numeros = digitos.split("").map(Number);

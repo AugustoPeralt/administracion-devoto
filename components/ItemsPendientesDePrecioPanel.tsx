@@ -33,8 +33,8 @@ export function ItemsPendientesDePrecioPanel({ items }: { items: ItemPendienteDe
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
       <h2 className="mb-1 text-sm font-semibold text-amber-900">Ítems sin precio ({items.length})</h2>
       <p className="mb-3 text-xs text-amber-700">
-        Quedaron sin precio al confirmar (típico de VERDULERIA sin match en la lista de 5cynar). La factura
-        completa queda &quot;pendiente de revisión&quot; hasta asignarles un precio.
+        Quedaron sin precio al confirmar (típico de un remito de VERDULERIA que no trae precio impreso). La
+        factura completa queda &quot;pendiente de revisión&quot; hasta asignarles un precio.
       </p>
       <div className="space-y-2">
         {items.map((it) => (
@@ -49,6 +49,14 @@ export function ItemsPendientesDePrecioPanel({ items }: { items: ItemPendienteDe
             <span className="text-xs text-slate-400">{it.proveedorNombre}</span>
             <span className="text-xs text-slate-400">{it.localNombre ?? "sin local"}</span>
             <span className="text-xs text-slate-400">{it.fechaEmision.slice(0, 10)}</span>
+            <a
+              href={`/api/control-precios/ver-comprobante/${it.facturaId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-slate-600 underline hover:text-slate-900"
+            >
+              Ver factura
+            </a>
             <div className="flex-1" />
             <input
               type="text"

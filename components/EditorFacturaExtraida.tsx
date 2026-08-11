@@ -7,6 +7,7 @@ import {
   type ItemFacturaIA,
 } from "@/app/control-precios/actions";
 import { CATEGORIAS_INSUMO } from "@/lib/control-precios/constantes";
+import { normalizarCuit } from "@/lib/control-precios/normalizar";
 import { parseNumeroDecimal } from "@/lib/formato";
 import { useState } from "react";
 
@@ -112,6 +113,15 @@ export function EditorFacturaExtraida({
             type="text"
             value={factura.proveedor_cuit ?? ""}
             onChange={(e) => actualizarCabecera("proveedor_cuit", e.target.value || null)}
+            onBlur={(e) => {
+              // Reformatea a XX-XXXXXXXX-X si se tipeó/leyó con otro formato (sin
+              // guiones, con espacios) — evita que el mismo CUIT quede guardado con
+              // formato distinto entre dos facturas y se lea como dos proveedores.
+              const digitos = normalizarCuit(e.target.value);
+              if (digitos.length === 11) {
+                actualizarCabecera("proveedor_cuit", `${digitos.slice(0, 2)}-${digitos.slice(2, 10)}-${digitos.slice(10)}`);
+              }
+            }}
             placeholder="XX-XXXXXXXX-X"
             className="w-40 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
           />
@@ -160,9 +170,12 @@ export function EditorFacturaExtraida({
           <input
             type="text"
             inputMode="decimal"
-            value={factura.monto_total}
-            onChange={(e) => actualizarCabecera("monto_total", parseNumeroDecimal(e.target.value))}
-            className="w-32 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
+            placeholder="Sin total (página no final)"
+            value={factura.monto_total ?? ""}
+            onChange={(e) =>
+              actualizarCabecera("monto_total", e.target.value.trim() === "" ? null : parseNumeroDecimal(e.target.value))
+            }
+            className="w-40 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
           />
         </div>
       </div>
@@ -287,9 +300,8 @@ export function EditorFacturaExtraida({
 
       {factura.items.some((i) => i.precio_unitario === null) && (
         <p className="text-xs text-amber-700">
-          Los ítems resaltados no traen precio impreso. Si el proveedor es VERDULERIA, el sistema va a intentar
-          completarlo con la lista de precios de 5cynar al confirmar; si no encuentra el producto ahí, la factura
-          queda marcada como &quot;pendiente de revisión&quot; y podés cargarlo a mano después.
+          Los ítems resaltados no traen precio impreso. Al confirmar, la factura queda marcada como
+          &quot;pendiente de revisión&quot; y podés cargarles el precio a mano después desde Calidad de datos.
         </p>
       )}
     </div>

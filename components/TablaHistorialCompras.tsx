@@ -2,6 +2,7 @@
 
 import { formatoFecha, formatoMoneda } from "@/lib/formato";
 import type { FilaHistorialCompras } from "@/lib/control-precios/consultas";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 type Grupo = { proveedorId: number; proveedorNombre: string; items: FilaHistorialCompras[] };
@@ -232,7 +233,7 @@ function FilaProducto({
                     <td className="whitespace-nowrap px-2 py-1 text-right">
                       {c.verificado === false && (
                         <span
-                          className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700"
+                          className="mr-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700"
                           title={`Tiene descuento propio y no reconcilia contra el subtotal impreso${
                             c.subtotalImpreso !== null ? ` (${formatoMoneda(c.subtotalImpreso)})` : " (no hay subtotal impreso extraído)"
                           } — no está incluido en el gasto verificado.`}
@@ -240,6 +241,12 @@ function FilaProducto({
                           sin verificar
                         </span>
                       )}
+                      <Link
+                        href={`/control-precios/facturas/${c.facturaId}`}
+                        className="text-xs text-slate-500 underline hover:text-slate-900"
+                      >
+                        Corregir
+                      </Link>
                     </td>
                   </tr>
                 ))}

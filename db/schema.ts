@@ -21,6 +21,23 @@ export const accionCargaEnum = pgEnum("accion_carga", [
 ]);
 export const estadoDuplicadoEnum = pgEnum("estado_duplicado", ["confirmado", "justificado"]);
 
+/**
+ * Refresh token vigente de la cuenta de servicio delegada que usa `lib/graph.ts`
+ * para autenticarse contra Microsoft Graph (reemplazo de app-only/client
+ * credentials, bloqueado por Security Defaults del tenant — ver PLAN_TECNICO.md).
+ * Microsoft rota el refresh token en cada uso, así que no puede vivir en una
+ * variable de entorno estática: cada renovación pisa `refreshToken` acá antes
+ * de devolver el access token. `cuenta` es una clave lógica fija (no
+ * necesariamente el email real), no un dato de negocio.
+ */
+export const graphAuthTokens = pgTable("graph_auth_tokens", {
+  id: serial("id").primaryKey(),
+  cuenta: text("cuenta").notNull().unique(),
+  refreshToken: text("refresh_token").notNull(),
+  actualizadoEn: timestamp("actualizado_en", { withTimezone: true }).notNull().defaultNow(),
+  creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Alquileres ──────────────────────────────────────────────────────────────
 // Prefijo "alq" para separar claramente del dominio de Consolidados (arriba).
 // Mapea 1:1 los dataclasses de contratoAlquileres/src/models.py.
@@ -463,10 +480,10 @@ export const cpEstadoFacturaEnum = pgEnum("cp_estado_factura", [
   "confirmada",
 ]);
 // Trazabilidad de cómo se completó precio_unitario en detalle_facturas: 'factura'
-// es el caso normal (viene en el comprobante), 'referencia_5cynar' es el cruce
-// contra el Excel de contabilidad (ver cpPreciosReferenciaVerduleria) para el caso
-// de VERDULERIA que no imprime precio en el remito, y 'manual' es carga a mano en
-// la pantalla de validación cuando ninguna de las dos anteriores aplica.
+// es el caso normal (viene en el comprobante), 'referencia_5cynar' es un valor
+// histórico (cruce con el Excel de contabilidad de 5cynar, mecanismo ya retirado
+// — se deja en el enum porque hay filas viejas con este valor, no se generan
+// filas nuevas así), y 'manual' es carga a mano en la pantalla de validación.
 export const cpPrecioOrigenEnum = pgEnum("cp_precio_origen", [
   "factura",
   "referencia_5cynar",
@@ -511,7 +528,13 @@ export const cpFacturas = pgTable("cp_facturas", {
   localId: integer("local_id").references(() => alqLocales.id),
   fechaEmision: date("fecha_emision").notNull(),
   fechaCarga: timestamp("fecha_carga", { withTimezone: true }).notNull().defaultNow(),
-  montoTotal: numeric("monto_total", { precision: 18, scale: 2 }).notNull(),
+  // Nullable a propósito: null en la primera página de un comprobante multipágina
+  // que no imprime el TOTAL final (ver la regla de monto_total en actions.ts,
+  // PROMPT_EXTRACCION) — antes se inventaba un total ahí y se contaba dos veces al
+  // sumar por proveedor/mes (caso real: Distribuidora El Criollo SRL, comprobante
+  // 0009-00701278, corregido 2026-08-07). Las queries que suman por proveedor/mes
+  // no necesitan filtrar el null aparte: SUM() de SQL ya lo ignora solo.
+  montoTotal: numeric("monto_total", { precision: 18, scale: 2 }),
   // Referencia al comprobante original. Dos formatos conviven a propósito (ver
   // lib/control-precios/CLAUDE.md y esClaveR2() en lib/control-precios/r2.ts):
   // URL completa (https://...) = facturas viejas, siguen en Vercel Blob sin
@@ -539,8 +562,8 @@ export const cpDetalleFacturas = pgTable("cp_detalle_facturas", {
     .notNull()
     .references(() => cpProductos.id),
   cantidad: numeric("cantidad", { precision: 12, scale: 2 }).notNull(),
-  // Nullable: un remito de VERDULERIA puede llegar sin precio — se completa después
-  // contra cpPreciosReferenciaVerduleria, o queda null para carga manual.
+  // Nullable: un remito puede llegar sin precio impreso (ej. VERDULERIA) — queda
+  // null para carga manual desde el panel de calidad de datos.
   precioUnitario: numeric("precio_unitario", { precision: 18, scale: 2 }),
   // Bonificación impresa en el renglón (ej. FEMSA descuenta por producto en algunos
   // remitos). Nullable: la mayoría de los ítems no tienen. Entra en el cálculo de
@@ -569,41 +592,6 @@ export const cpDetalleFacturas = pgTable("cp_detalle_facturas", {
   // Default false: no reemplaza el chequeo automático, es un complemento.
   verificadoManual: boolean("verificado_manual").notNull().default(false),
 });
-
-/**
- * Precios de referencia importados del Excel de contabilidad de 5cynar
- * (facturaBpedidosJulio-diciembre 2026.xlsx): una fila por producto, con una
- * columna de precio por mes (Columna D en adelante = Julio 2026, Agosto 2026, ...).
- *
- * Clave por NOMBRE normalizado, no por FK a cp_productos: el Excel de 5cynar es una
- * lista de precios de mercado de contabilidad, independiente de qué verdulería
- * puntual mandó el remito de cada local — no hay un cp_productos (que sí está
- * scopeado a un proveedor_id concreto) al que asociarlo 1:1. El cruce en
- * confirmarFactura() matchea por producto_nombre_normalizado, no por id.
- *
- * `periodo` guarda el primer día del mes (ej. 2026-07-01) para poder resolver la
- * columna correcta a partir de fecha_emision sin parsear texto de encabezado en
- * tiempo de consulta. Reimportar el archivo hace upsert por (nombre, periodo).
- */
-export const cpPreciosReferenciaVerduleria = pgTable(
-  "cp_precios_referencia_verduleria",
-  {
-    id: serial("id").primaryKey(),
-    productoNombreNormalizado: text("producto_nombre_normalizado").notNull(),
-    productoNombre: text("producto_nombre").notNull(), // tal como figura en el Excel, para mostrar en UI
-    unidadMedida: text("unidad_medida").notNull().default("u"),
-    periodo: date("periodo").notNull(),
-    precioUnitario: numeric("precio_unitario", { precision: 18, scale: 2 }).notNull(),
-    archivoOrigen: text("archivo_origen").notNull(),
-    importadoEn: timestamp("importado_en", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("cp_precios_referencia_nombre_periodo_idx").on(
-      t.productoNombreNormalizado,
-      t.periodo
-    ),
-  ]
-);
 
 /**
  * Lista de precios cotizada por un proveedor (catálogo/cotización) — a
@@ -760,4 +748,39 @@ export const cpSustitutosProducto = pgTable(
     creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("cp_sustitutos_producto_a_b_idx").on(t.listaAId, t.listaBId)]
+);
+
+/**
+ * Marca un "caso" (un grupo específico de cp_facturas.id) como revisado y
+ * confirmado que NO es un error, para que deje de aparecer en
+ * obtenerFacturasPosibleDuplicado() — ver esa función para el detector, que
+ * agrupa por dos señales distintas (mismo número de comprobante, o mismo
+ * proveedor+local+fecha+monto exacto) y frecuentemente termina agrupando más
+ * de 2 facturas. Reusa estadoDuplicadoEnum aunque acá en la práctica solo se
+ * usa "justificado": una factura mal cargada se corrige en el lugar
+ * (corregirMontoFactura pisa cp_facturas.montoTotal) y el caso desaparece solo
+ * del detector al dejar de cumplir la condición, sin necesitar un estado
+ * "confirmado" — igual que obtenerFacturasConFechaSospechosa.
+ *
+ * facturaIds identifica el caso (no un numeroFactura ni una fecha): los ids
+ * de cp_facturas del grupo, ordenados de menor a mayor y unidos por coma
+ * (ej. "213,217"). Si el grupo cambia de composición en una corrida futura
+ * del detector (se agrega o se quita una factura), el string ya no matchea y
+ * el caso vuelve a aparecer como pendiente — preferible a arrastrar una
+ * resolución vieja sobre un grupo que ya no es el mismo.
+ */
+export const cpFacturasRepetidasRevisadas = pgTable(
+  "cp_facturas_repetidas_revisadas",
+  {
+    id: serial("id").primaryKey(),
+    proveedorId: integer("proveedor_id")
+      .notNull()
+      .references(() => cpProveedores.id, { onDelete: "cascade" }),
+    facturaIds: text("factura_ids").notNull(),
+    estado: estadoDuplicadoEnum("estado").notNull(),
+    comentario: text("comentario").notNull(),
+    usuarioEmail: text("usuario_email").notNull(),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_facturas_repetidas_ids_idx").on(t.facturaIds)]
 );

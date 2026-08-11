@@ -176,6 +176,41 @@
       "when": 1785427028994,
       "tag": "0024_clean_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786122397964,
+      "tag": "0025_known_veda",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786125675257,
+      "tag": "0026_military_adam_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1786125712660,
+      "tag": "0027_past_luminals",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786127738365,
+      "tag": "0028_bouncy_jazinda",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786466714052,
+      "tag": "0029_overconfident_grim_reaper",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@
 import { corregirFechaFactura } from "@/app/control-precios/actions";
 import { formatoMoneda } from "@/lib/formato";
 import type { FacturaFechaSospechosa } from "@/lib/control-precios/consultas";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -53,6 +54,9 @@ export function FacturasFechaSospechosaPanel({ facturas }: { facturas: FacturaFe
             >
               Ver foto
             </a>
+            <Link href={`/control-precios/facturas/${f.id}`} className="text-xs text-slate-600 underline hover:text-slate-900">
+              Corregir ítems
+            </Link>
             <div className="flex-1" />
             <span className="text-xs text-slate-400 line-through">{f.fechaEmision.slice(0, 10)}</span>
             <input

@@ -1,0 +1,1 @@
+DROP TABLE "cp_facturas_repetidas_revisadas" CASCADE;

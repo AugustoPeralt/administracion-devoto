@@ -1,0 +1,1 @@
+DROP TABLE "cp_precios_referencia_verduleria" CASCADE;

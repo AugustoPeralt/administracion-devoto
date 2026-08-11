@@ -2,6 +2,7 @@
 
 import { formatoFecha, formatoMoneda } from "@/lib/formato";
 import type { FilaDeltaPrecio } from "@/lib/control-precios/consultas";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 type Grupo = { proveedorId: number; proveedorNombre: string; items: FilaDeltaPrecio[] };
@@ -164,10 +165,21 @@ function FilaDelta({ d, umbralAlerta }: { d: FilaDeltaPrecio; umbralAlerta: numb
       <td className="whitespace-nowrap px-3 py-2 text-right">
         <div className="font-mono tabular-nums text-slate-500">{d.precioBase ? formatoMoneda(d.precioBase) : "—"}</div>
         {d.fechaBase && <div className="text-xs text-slate-400">{formatoFecha(d.fechaBase)}</div>}
+        {d.facturaIdBase && (
+          <Link href={`/control-precios/facturas/${d.facturaIdBase}`} className="text-xs text-slate-400 underline hover:text-slate-900">
+            Corregir
+          </Link>
+        )}
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
         <div className="font-mono tabular-nums text-slate-900">{formatoMoneda(d.precioActual)}</div>
         <div className="text-xs text-slate-400">{formatoFecha(d.fechaActual)}</div>
+        <Link
+          href={`/control-precios/facturas/${d.facturaIdActual}`}
+          className="text-xs text-slate-400 underline hover:text-slate-900"
+        >
+          Corregir
+        </Link>
       </td>
       <td
         className={`whitespace-nowrap px-3 py-2 text-right font-medium ${

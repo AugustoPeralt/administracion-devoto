@@ -5,15 +5,15 @@ import { db } from "@/db";
 import {
   cpDetalleFacturas,
   cpFacturas,
-  cpPreciosReferenciaVerduleria,
+  cpFacturasRepetidasRevisadas,
   cpProductos,
   cpProveedores,
 } from "@/db/schema";
 import { CATEGORIAS_INSUMO } from "@/lib/control-precios/constantes";
 import {
   esCuitValido,
+  normalizarCuit,
   normalizarNombreProducto,
-  primerDiaDelMes,
   sonNombresSimilares,
 } from "@/lib/control-precios/normalizar";
 import { and, eq, ilike, sql } from "drizzle-orm";
@@ -55,7 +55,14 @@ export type FacturaExtraidaIA = {
   // esta factura ya se cargó antes — ver el índice único en cp_facturas.
   numero_factura: string | null;
   fecha_emision: string; // YYYY-MM-DD
-  monto_total: number;
+  // null cuando esta página/foto no imprime el TOTAL final del comprobante (típico
+  // de la primera hoja de una factura de varias páginas, donde el total solo
+  // aparece en la última) — ver la regla de monto_total en PROMPT_EXTRACCION y el
+  // comentario sobre facturas multipágina en confirmarFactura(). Nunca se estima
+  // sumando los ítems de una sola página: eso duplicaba el total real al sumarse
+  // con el de la página que sí trae el TOTAL impreso (caso real: Distribuidora El
+  // Criollo SRL, comprobante 0009-00701278, corregido 2026-08-07).
+  monto_total: number | null;
   categoria_sugerida: CategoriaInsumo;
   // Nombre del comprador/cliente/destinatario impreso en la factura, si figura —
   // NO se usa para asignar el restaurante (eso lo elige la persona por lote, ver
@@ -96,6 +103,22 @@ Reglas:
   cargó antes, así que prestale atención — pero si no es legible, dejalo en null,
   no inventes un número.
 - La fecha de emisión va en formato YYYY-MM-DD.
+- "monto_total" es el TOTAL FINAL impreso al pie del comprobante (la suma
+  definitiva a pagar — "TOTAL", "Total a Pagar", "Importe Total", etc.), CON
+  impuestos/IVA/percepciones incluidos si el comprobante los suma ahí.
+  IMPORTANTE — comprobantes de VARIAS PÁGINAS: muchos proveedores imprimen el
+  TOTAL final SOLO en la última página (las anteriores muestran los ítems pero
+  no cierran con un total). Si ESTA página/foto en particular no imprime ese
+  total final (por ejemplo, es la primera hoja de un comprobante que se nota
+  continúa: dice "Página 1 de 2", el listado de ítems corta de golpe, o
+  simplemente no hay ninguna fila de TOTAL al pie), dejá "monto_total" en
+  null — NO lo inventes, y NO sumes vos los precios de los ítems de esta
+  página para estimarlo, aunque te parezca fácil de calcular. Extraé igual
+  todos los ítems y sus precios unitarios de esta página con normalidad, eso
+  no cambia. Solo la página que efectivamente tiene impreso el TOTAL final
+  lleva "monto_total" con ese valor. Poner un monto inventado en una página
+  que no es la última hace que el total de esa factura se cuente dos veces
+  cuando alguien sume ambas páginas.
 - Sugerí "categoria_sugerida" según el rubro del proveedor: CARNE, ALMACEN,
   VERDULERIA, BEBIBLES o DESCARTABLES.
 - Si el comprobante imprime a nombre de quién está hecha la compra (cliente,
@@ -152,6 +175,17 @@ DESCUENTO Y SUBTOTAL:
   sobre cantidad × precio_unitario. Si el ítem no tiene descuento propio, dejá
   "descuento" en null. Un descuento a nivel de TODA la factura (su propia línea
   separada, no dentro de un renglón de producto) no es un ítem y no entra acá.
+  OJO — antes de convertir un "% Dto" en un valor de "descuento", verificá si ese
+  % YA ESTÁ DESCONTADO del "precio_unitario"/"P.U." que ya elegiste, en vez
+  de asumir que hay que restarlo de nuevo: si cantidad × precio_unitario YA
+  coincide con el "Total" impreso de esa línea (sin restar el % de Dto encima),
+  el descuento ya viene aplicado en el precio unitario — dejá "descuento" en
+  null, NO lo restes una segunda vez. Recién calculá "descuento" en pesos cuando
+  cantidad × precio_unitario sea MAYOR que el "Total" impreso de esa línea (ahí
+  sí el descuento todavía no está aplicado y falta restarlo). Caso real que
+  motivó esto: HORECA SRL, factura 0009-00228077 — imprime "%Dto 10.000" en cada
+  renglón, pero su propio "Total" de línea y el "Neto" final NO le restan ese
+  10%; se necesitaba "descuento" en null, no calculado sobre el %.
 - "subtotal_impreso" es el total de esa línea tal cual está impreso en el papel
   (columna "Subtotal", "Importe", "Total renglón", etc.), sin importar si incluye
   IVA/Impuestos Internos o no — extraelo tal cual figura, NO lo valides ni lo
@@ -202,7 +236,7 @@ const FACTURA_SCHEMA: Schema = {
     proveedor_cuit: { type: SchemaType.STRING, nullable: true },
     numero_factura: { type: SchemaType.STRING, nullable: true },
     fecha_emision: { type: SchemaType.STRING, description: "Formato YYYY-MM-DD" },
-    monto_total: { type: SchemaType.NUMBER },
+    monto_total: { type: SchemaType.NUMBER, nullable: true },
     categoria_sugerida: { type: SchemaType.STRING, format: "enum", enum: [...CATEGORIAS] },
     cliente_detectado: { type: SchemaType.STRING, nullable: true },
     items: {
@@ -222,7 +256,7 @@ const FACTURA_SCHEMA: Schema = {
       },
     },
   },
-  required: ["proveedor_nombre", "fecha_emision", "monto_total", "categoria_sugerida", "items"],
+  required: ["proveedor_nombre", "fecha_emision", "categoria_sugerida", "items"],
 };
 
 function requerirSesion() {
@@ -326,7 +360,10 @@ function pareceIncompleta(factura: FacturaExtraidaIA): boolean {
   if (factura.items.some((i) => !i.producto_nombre?.trim())) return true;
 
   const todosConPrecio = factura.items.every((i) => i.precio_unitario !== null && i.precio_unitario !== undefined);
-  if (!todosConPrecio || factura.monto_total <= 0) return false;
+  // monto_total en null es esperado (y no un error) en la primera página de un
+  // comprobante multipágina — ver la regla en PROMPT_EXTRACCION. No hay total
+  // contra el que validar, así que se salta el chequeo en vez de marcarla incompleta.
+  if (!todosConPrecio || factura.monto_total === null || factura.monto_total <= 0) return false;
 
   const subtotalesPropios = factura.items.map(
     (i) => (i.precio_unitario ?? 0) * i.cantidad - (i.descuento ?? 0)
@@ -447,7 +484,11 @@ async function buscarOCrearProveedor(datos: {
   categoria: CategoriaInsumo;
 }): Promise<ResultadoProveedor> {
   const nombre = datos.nombre.trim();
-  const cuitLeido = datos.cuit?.trim() || null;
+  // Normalizado a solo dígitos ANTES de validar/comparar/guardar: así
+  // "33-xxxxxxxx-x" y "33xxxxxxxxx" (mismo CUIT, dos lecturas con formato
+  // distinto) son el mismo string y matchean por eq() más abajo, en vez de
+  // crear un proveedor nuevo por una diferencia de guiones.
+  const cuitLeido = datos.cuit ? normalizarCuit(datos.cuit) : null;
   const cuit = cuitLeido && esCuitValido(cuitLeido) ? cuitLeido : null;
 
   if (cuit) {
@@ -498,12 +539,21 @@ async function buscarOCrearProducto(datos: {
   unidadMedida?: string | null;
 }): Promise<number> {
   const nombre = datos.nombre.trim();
+  const nombreNormalizado = normalizarNombreProducto(nombre);
 
-  const [existente] = await db
-    .select({ id: cpProductos.id })
+  // Comparación en memoria contra el nombre normalizado (acentos/mayúsculas/
+  // espacios repetidos, ver normalizarNombreProducto) en vez de un ilike exacto
+  // contra la columna cruda — así "Hielo x 15 kg." y "hielo  x 15  Kg." (mismo
+  // producto, lectura de IA con espacios/acentos distintos) matchean al mismo
+  // producto en vez de crear uno nuevo. Mismo patrón que ya usa
+  // buscarOCrearProveedor con sonNombresSimilares.
+  const existentesDelProveedor = await db
+    .select({ id: cpProductos.id, nombre: cpProductos.nombre })
     .from(cpProductos)
-    .where(and(eq(cpProductos.proveedorId, datos.proveedorId), ilike(cpProductos.nombre, nombre)))
-    .limit(1);
+    .where(eq(cpProductos.proveedorId, datos.proveedorId));
+  const existente = existentesDelProveedor.find(
+    (p) => normalizarNombreProducto(p.nombre) === nombreNormalizado
+  );
   if (existente) return existente.id;
 
   const insertado = await db
@@ -541,31 +591,14 @@ export async function buscarProveedoresSimilares(termino: string) {
     .limit(5);
 }
 
-async function resolverPrecioVerduleria(
-  productoNombre: string,
-  fechaEmision: string
-): Promise<number | null> {
-  const [referencia] = await db
-    .select({ precioUnitario: cpPreciosReferenciaVerduleria.precioUnitario })
-    .from(cpPreciosReferenciaVerduleria)
-    .where(
-      and(
-        eq(cpPreciosReferenciaVerduleria.productoNombreNormalizado, normalizarNombreProducto(productoNombre)),
-        eq(cpPreciosReferenciaVerduleria.periodo, primerDiaDelMes(fechaEmision))
-      )
-    )
-    .limit(1);
-  return referencia ? Number(referencia.precioUnitario) : null;
-}
-
 export type ResultadoConfirmarFactura =
   | { ok: true; facturaId: number; pendienteRevision: boolean; posibleDuplicado: string | null }
   | { ok: false; error: string };
 
 /**
  * Persiste la factura ya validada/corregida por el usuario. La factura queda en
- * 'pendiente_revision' si algún ítem se quedó sin precio (típicamente VERDULERIA sin
- * match en el Excel de 5cynar) — nunca se bloquea la carga del resto por eso.
+ * 'pendiente_revision' si algún ítem se quedó sin precio (típicamente un remito de
+ * VERDULERIA sin precio impreso) — nunca se bloquea la carga del resto por eso.
  *
  * Devuelve `{ ok: false, error }` en vez de lanzar una excepción para los casos
  * esperados (factura duplicada, fecha rara, etc.) — Next.js 16 redacta el
@@ -624,13 +657,6 @@ export async function confirmarFactura(
     categoria: datos.categoria_sugerida,
   });
 
-  const [proveedor] = await db
-    .select({ categoria: cpProveedores.categoria })
-    .from(cpProveedores)
-    .where(eq(cpProveedores.id, proveedorId))
-    .limit(1);
-  if (!proveedor) return { ok: false, error: "No se pudo resolver el proveedor." };
-
   const numeroFactura = datos.numero_factura?.trim() || null;
   // Chequeo pensado para cargas de facturas viejas en lote, donde es fácil
   // repetir sin darse cuenta la foto de un comprobante ya cargado. El número de
@@ -682,7 +708,7 @@ export async function confirmarFactura(
     subtotal: string | null;
     subtotalImpreso: string | null;
     ivaPorcentaje: string | null;
-    precioOrigen: "factura" | "referencia_5cynar" | "manual";
+    precioOrigen: "factura" | "manual";
   };
 
   const detalle: FilaDetalle[] = [];
@@ -697,24 +723,15 @@ export async function confirmarFactura(
       unidadMedida: item.unidad_medida,
     });
 
-    let precioUnitario = item.precio_unitario;
-    // Descuento propio del renglón (no aplica al precio de referencia de
-    // VERDULERIA: ese es un precio de mercado, no lo que imprimió este remito).
+    const precioUnitario = item.precio_unitario;
     const descuento = item.descuento ?? null;
     let origen: FilaDetalle["precioOrigen"] = "factura";
 
+    // Sin precio impreso (típico de un remito de VERDULERIA): queda pendiente de
+    // carga manual — se resuelve después desde el panel de calidad de datos
+    // (ver ItemsPendientesDePrecioPanel / asignarPrecioManual).
     if (precioUnitario === null || precioUnitario === undefined) {
-      if (proveedor.categoria === "VERDULERIA") {
-        const precioReferencia = await resolverPrecioVerduleria(item.producto_nombre, datos.fecha_emision);
-        if (precioReferencia !== null) {
-          precioUnitario = precioReferencia;
-          origen = "referencia_5cynar";
-        } else {
-          origen = "manual"; // sin match en el Excel de 5cynar — pendiente de carga manual
-        }
-      } else {
-        origen = "manual";
-      }
+      origen = "manual";
     }
 
     // El subtotal que se persiste (y que usan todos los reportes) SIEMPRE se
@@ -750,7 +767,7 @@ export async function confirmarFactura(
       proveedorId,
       localId,
       fechaEmision: datos.fecha_emision,
-      montoTotal: datos.monto_total.toFixed(2),
+      montoTotal: datos.monto_total != null ? datos.monto_total.toFixed(2) : null,
       archivoUrl: archivoRef,
       estado: facturaIncompleta ? "pendiente_revision" : "confirmada",
       numeroFactura,
@@ -934,22 +951,148 @@ export async function corregirFechaFactura(facturaId: number, nuevaFecha: string
   revalidatePath("/control-precios/reportes");
 }
 
-/** Asigna manualmente el precio de un ítem que quedó sin dato (típicamente
- * VERDULERIA sin match en la referencia de 5cynar). Si con esto ya no queda
- * ningún ítem sin precio en esa factura, la pasa de 'pendiente_revision' a
- * 'confirmada'. */
-export async function asignarPrecioManual(detalleId: number, precio: number) {
+/** Corrección puntual del monto_total de una factura — pensado para el caso de
+ * obtenerFacturasPosibleDuplicado(): una página de un comprobante multipágina
+ * que quedó cargada con su propio subtotal parcial en vez de $0 (solo la
+ * página con el TOTAL impreso real debe quedar con monto > 0), o una factura
+ * subida dos veces por error (bajar a $0 la copia de más). No borra la
+ * factura ni sus ítems, solo corrige el total usado en las sumas por
+ * proveedor/mes — así queda la fila como registro de que existió la carga. */
+export async function corregirMontoFactura(facturaId: number, nuevoMonto: number) {
   await requerirSesion();
-  if (!Number.isFinite(precio) || precio <= 0) throw new Error("Precio inválido.");
+  if (!Number.isFinite(nuevoMonto) || nuevoMonto < 0) throw new Error("Monto inválido.");
 
-  const [detalle] = await db.select().from(cpDetalleFacturas).where(eq(cpDetalleFacturas.id, detalleId)).limit(1);
+  await db.update(cpFacturas).set({ montoTotal: nuevoMonto.toFixed(2) }).where(eq(cpFacturas.id, facturaId));
+
+  revalidatePath("/control-precios/proveedores");
+  revalidatePath("/control-precios/reportes");
+}
+
+/** Marca un caso de obtenerFacturasPosibleDuplicado() como revisado y sin
+ * problema (ej. dos facturas reales distintas que coincidieron en número o
+ * monto) para que deje de aparecer en el panel. No corrige ningún monto —
+ * para eso está corregirMontoFactura(). facturaIds identifica el caso exacto
+ * (ver comentario de cpFacturasRepetidasRevisadas en db/schema.ts). */
+export async function justificarFacturasPosibleDuplicado(
+  facturaIds: number[],
+  proveedorId: number,
+  comentario: string
+) {
+  const session = await auth();
+  const usuarioEmail = session?.user?.email;
+  if (!usuarioEmail) throw new Error("Tenés que iniciar sesión para resolver un caso.");
+  const comentarioLimpio = comentario.trim();
+  if (!comentarioLimpio) throw new Error("El comentario es obligatorio.");
+  if (facturaIds.length < 2) throw new Error("El caso tiene que tener al menos dos facturas.");
+
+  const clave = [...facturaIds].sort((a, b) => a - b).join(",");
+
+  await db
+    .insert(cpFacturasRepetidasRevisadas)
+    .values({ proveedorId, facturaIds: clave, estado: "justificado", comentario: comentarioLimpio, usuarioEmail })
+    .onConflictDoUpdate({
+      target: [cpFacturasRepetidasRevisadas.facturaIds],
+      set: { estado: "justificado", comentario: comentarioLimpio, usuarioEmail, creadoEn: new Date() },
+    });
+
+  revalidatePath("/control-precios/proveedores");
+  revalidatePath("/control-precios/reportes");
+}
+
+/** Asigna manualmente el precio de un ítem que quedó sin dato (típicamente un
+ * remito de VERDULERIA sin precio impreso). Si con esto ya no queda ningún ítem
+ * sin precio en esa factura, la pasa de 'pendiente_revision' a 'confirmada'. */
+export async function asignarPrecioManual(detalleId: number, precio: number) {
+  if (!Number.isFinite(precio) || precio <= 0) throw new Error("Precio inválido.");
+  await corregirItemFacturaConfirmada(detalleId, { precioUnitario: precio });
+}
+
+export type CambiosItemFactura = {
+  productoNombre?: string;
+  cantidad?: number;
+  // undefined = no tocar, null = volver a "sin dato" (pendiente de carga), number = fijar valor.
+  precioUnitario?: number | null;
+  descuento?: number | null;
+};
+
+/**
+ * Corrige un ítem de una factura YA guardada (confirmada o pendiente_revision) —
+ * generaliza lo que hacía asignarPrecioManual() (pensada solo para ítems sin
+ * precio) para cubrir también el caso de notar un error DESPUÉS de confirmar
+ * (ej. un descuento que la IA volvió a aplicarle a un producto que no lo tiene,
+ * distorsionando el % de aumento en Reportes) sin tener que pedir la corrección
+ * a mano en la base — ver /control-precios/facturas/[id].
+ *
+ * Recalcula subtotal igual que confirmarFactura()/EditorFacturaExtraida
+ * (cantidad × precio_unitario − descuento) y marca precio_origen: "manual". Si
+ * cambia el nombre del producto, resuelve/crea el producto correspondiente
+ * dentro del MISMO proveedor de la factura (mismo buscarOCrearProducto que usa
+ * la carga original) en vez de reusar el productoId actual — evita que "corregir
+ * un typo" cree sin querer un ítem huérfano de otro producto.
+ *
+ * A diferencia de asignarPrecioManual (que solo empujaba la factura hacia
+ * 'confirmada'), acá el estado se recalcula en los dos sentidos: si esta
+ * corrección deja un ítem sin precio (ej. se limpió a mano), la factura vuelve a
+ * 'pendiente_revision' igual que si nunca hubiera tenido precio.
+ */
+export async function corregirItemFacturaConfirmada(detalleId: number, cambios: CambiosItemFactura) {
+  await requerirSesion();
+
+  const [detalle] = await db
+    .select({
+      facturaId: cpDetalleFacturas.facturaId,
+      productoId: cpDetalleFacturas.productoId,
+      cantidad: cpDetalleFacturas.cantidad,
+      precioUnitario: cpDetalleFacturas.precioUnitario,
+      descuento: cpDetalleFacturas.descuento,
+    })
+    .from(cpDetalleFacturas)
+    .where(eq(cpDetalleFacturas.id, detalleId))
+    .limit(1);
   if (!detalle) throw new Error("No se encontró el ítem.");
 
-  const descuentoExistente = detalle.descuento !== null ? Number(detalle.descuento) : 0;
-  const subtotal = (precio * Number(detalle.cantidad) - descuentoExistente).toFixed(2);
+  const cantidad = cambios.cantidad ?? Number(detalle.cantidad);
+  const precioUnitario =
+    cambios.precioUnitario !== undefined
+      ? cambios.precioUnitario
+      : detalle.precioUnitario !== null
+        ? Number(detalle.precioUnitario)
+        : null;
+  const descuento =
+    cambios.descuento !== undefined ? cambios.descuento : detalle.descuento !== null ? Number(detalle.descuento) : null;
+
+  if (!Number.isFinite(cantidad) || cantidad <= 0) throw new Error("Cantidad inválida.");
+  if (precioUnitario !== null && (!Number.isFinite(precioUnitario) || precioUnitario <= 0)) {
+    throw new Error("Precio inválido.");
+  }
+  if (descuento !== null && (!Number.isFinite(descuento) || descuento < 0)) throw new Error("Descuento inválido.");
+
+  let productoId = detalle.productoId;
+  if (cambios.productoNombre?.trim()) {
+    const [facturaDeEsteItem] = await db
+      .select({ proveedorId: cpFacturas.proveedorId })
+      .from(cpFacturas)
+      .where(eq(cpFacturas.id, detalle.facturaId))
+      .limit(1);
+    if (!facturaDeEsteItem) throw new Error("No se encontró la factura del ítem.");
+    productoId = await buscarOCrearProducto({
+      nombre: cambios.productoNombre,
+      proveedorId: facturaDeEsteItem.proveedorId,
+    });
+  }
+
+  const subtotal = precioUnitario !== null ? precioUnitario * cantidad - (descuento ?? 0) : null;
+
   await db
     .update(cpDetalleFacturas)
-    .set({ precioUnitario: precio.toFixed(2), subtotal, precioOrigen: "manual" })
+    .set({
+      productoId,
+      cantidad: cantidad.toFixed(2),
+      precioUnitario: precioUnitario !== null ? precioUnitario.toFixed(2) : null,
+      descuento: descuento !== null ? descuento.toFixed(2) : null,
+      subtotal: subtotal !== null ? subtotal.toFixed(2) : null,
+      precioOrigen: "manual",
+    })
     .where(eq(cpDetalleFacturas.id, detalleId));
 
   const resultado = await db.execute(sql`
@@ -957,12 +1100,14 @@ export async function asignarPrecioManual(detalleId: number, precio: number) {
     WHERE factura_id = ${detalle.facturaId} AND precio_unitario IS NULL
   `);
   const pendientes = (resultado.rows[0] as { pendientes: number }).pendientes;
-  if (pendientes === 0) {
-    await db.update(cpFacturas).set({ estado: "confirmada" }).where(eq(cpFacturas.id, detalle.facturaId));
-  }
+  await db
+    .update(cpFacturas)
+    .set({ estado: pendientes === 0 ? "confirmada" : "pendiente_revision" })
+    .where(eq(cpFacturas.id, detalle.facturaId));
 
   revalidatePath("/control-precios/proveedores");
   revalidatePath("/control-precios/reportes");
+  revalidatePath(`/control-precios/facturas/${detalle.facturaId}`);
 }
 
 export async function fusionarProductos(canonicoId: number, duplicadoId: number) {

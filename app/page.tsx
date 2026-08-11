@@ -17,8 +17,7 @@ const MODULOS: Modulo[] = [
   {
     href: "/control-precios/carga",
     nombre: "Control de Precios",
-    descripcion:
-      "Carga de facturas de proveedores con IA, cruce de precios de verdulería y auditoría de aumentos por rubro.",
+    descripcion: "Carga de facturas de proveedores con IA y auditoría de aumentos por rubro.",
     disponible: true,
   },
 ];

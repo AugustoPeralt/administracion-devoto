@@ -60,6 +60,14 @@ export function ItemsPrecioCeroPanel({ items }: { items: ItemPrecioCero[] }) {
             <span className="text-xs text-slate-400">{it.proveedorNombre}</span>
             <span className="text-xs text-slate-400">{it.localNombre ?? "sin local"}</span>
             <span className="text-xs text-slate-400">{it.fechaEmision.slice(0, 10)}</span>
+            <a
+              href={`/api/control-precios/ver-comprobante/${it.facturaId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-slate-600 underline hover:text-slate-900"
+            >
+              Ver factura
+            </a>
             <div className="flex-1" />
             <input
               type="text"
