@@ -33,6 +33,14 @@ export function formatoMesAnio(mes: string): string {
   return new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
 }
 
+/** Corta un texto largo con "…" — para labels de eje en gráficos, donde un
+ * nombre de producto/proveedor real puede superar los 70 caracteres y no hay
+ * espacio para mostrarlo entero. El valor completo sigue disponible en el
+ * tooltip (no pasa por acá). */
+export function truncarTexto(texto: string, maximo: number): string {
+  return texto.length > maximo ? `${texto.slice(0, maximo - 1)}…` : texto;
+}
+
 export function formatoFechaHora(fecha: string | Date): string {
   const d = typeof fecha === "string" ? new Date(fecha) : fecha;
   return new Intl.DateTimeFormat("es-AR", {

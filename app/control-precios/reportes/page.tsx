@@ -3,6 +3,9 @@ import { FiltrosReportePrecios } from "@/components/FiltrosReportePrecios";
 import { TablaComparacionRestaurantes } from "@/components/TablaComparacionRestaurantes";
 import { TablaDeltaPreciosPorProveedor } from "@/components/TablaDeltaPreciosPorProveedor";
 import { TablaHistorialCompras } from "@/components/TablaHistorialCompras";
+import { GraficoGastoPorProveedor } from "@/components/GraficoGastoPorProveedor";
+import { GraficoGastoPorCategoria } from "@/components/GraficoGastoPorCategoria";
+import { GraficoTopProductos } from "@/components/GraficoTopProductos";
 import { formatoFecha, formatoMoneda } from "@/lib/formato";
 import {
   obtenerComparacionEntreRestaurantes,
@@ -64,6 +67,35 @@ export default async function ReportePreciosPage({
   const gastoSinVerificarTotal = historialCompras.reduce((acc, f) => acc + f.gastoSinVerificar, 0);
   const itemsSinVerificarTotal = historialCompras.reduce((acc, f) => acc + f.itemsSinVerificar, 0);
 
+  // Agregaciones para los gráficos — derivadas de historialCompras (ya
+  // fetcheado arriba, un renglón por producto), no son consultas nuevas. Solo
+  // gastoVerificado entra a la cuenta, mismo criterio que el resto del
+  // reporte: la plata sin verificar no se mezcla en un número de decisión.
+  const gastoPorProveedorMap = new Map<string, number>();
+  for (const f of historialCompras) {
+    gastoPorProveedorMap.set(f.proveedorNombre, (gastoPorProveedorMap.get(f.proveedorNombre) ?? 0) + f.gastoVerificado);
+  }
+  const gastoPorProveedor = [...gastoPorProveedorMap.entries()]
+    .map(([proveedorNombre, gasto]) => ({ proveedorNombre, gasto }))
+    .sort((a, b) => b.gasto - a.gasto);
+  const proveedorConMayorGasto = gastoPorProveedor[0];
+  const gastoVerificadoTotal = historialCompras.reduce((acc, f) => acc + f.gastoVerificado, 0);
+  const porcentajeProveedorTop =
+    proveedorConMayorGasto && gastoVerificadoTotal > 0 ? (proveedorConMayorGasto.gasto / gastoVerificadoTotal) * 100 : 0;
+
+  const CANTIDAD_TOP_PROVEEDORES_GRAFICO = 12;
+  const CANTIDAD_TOP_PRODUCTOS_GRAFICO = 10;
+  const gastoPorProveedorGrafico = gastoPorProveedor.slice(0, CANTIDAD_TOP_PROVEEDORES_GRAFICO);
+  const topProductosGrafico = [...historialCompras]
+    .sort((a, b) => b.gastoVerificado - a.gastoVerificado)
+    .slice(0, CANTIDAD_TOP_PRODUCTOS_GRAFICO)
+    .map((f) => ({
+      productoNombre: f.productoNombre,
+      gasto: f.gastoVerificado,
+      cantidad: f.cantidadVerificada,
+      unidadMedida: f.unidadMedida,
+    }));
+
   const queryExport = new URLSearchParams({
     desde,
     hasta,
@@ -94,8 +126,16 @@ export default async function ReportePreciosPage({
 
       <FiltrosReportePrecios locales={locales} proveedores={proveedores} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile label="Gasto total del período" valor={formatoMoneda(gastoTotal)} />
+        <KpiTile
+          label="Proveedor con mayor gasto"
+          valor={
+            proveedorConMayorGasto
+              ? `${proveedorConMayorGasto.proveedorNombre} (${porcentajeProveedorTop.toFixed(0)}%)`
+              : "—"
+          }
+        />
         <KpiTile
           label="Mayor aumento"
           valor={mayorAumento ? `${mayorAumento.productoNombre} +${mayorAumento.porcentajeAumento}%` : "—"}
@@ -108,23 +148,30 @@ export default async function ReportePreciosPage({
         />
       </div>
 
-      {gastoPorCategoria.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Gasto por categoría</h2>
-          <div className="space-y-2">
-            {gastoPorCategoria.map((g) => {
-              const porcentaje = gastoTotal > 0 ? (g.total / gastoTotal) * 100 : 0;
-              return (
-                <div key={g.categoria} className="flex items-center gap-3">
-                  <span className="w-28 shrink-0 text-xs text-slate-600">{g.categoria}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-slate-950" style={{ width: `${porcentaje}%` }} />
-                  </div>
-                  <span className="w-28 shrink-0 text-right text-xs text-slate-500">{formatoMoneda(g.total)}</span>
-                </div>
-              );
-            })}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {gastoPorProveedorGrafico.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">Gasto por proveedor</h2>
+            <GraficoGastoPorProveedor datos={gastoPorProveedorGrafico} />
           </div>
+        )}
+        {gastoPorCategoria.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">Gasto por categoría</h2>
+            <GraficoGastoPorCategoria datos={gastoPorCategoria} />
+          </div>
+        )}
+      </div>
+
+      {topProductosGrafico.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-slate-900">
+            Top {topProductosGrafico.length} productos por gasto
+          </h2>
+          <p className="mb-3 text-xs text-slate-500">
+            Dónde se concentra la plata del período — el principio 80/20 aplicado a las compras.
+          </p>
+          <GraficoTopProductos datos={topProductosGrafico} />
         </div>
       )}
 

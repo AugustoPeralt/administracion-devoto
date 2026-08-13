@@ -16,6 +16,7 @@
     "parse": "tsx scripts/parse-excel.ts",
     "sharepoint:listar": "tsx scripts/sync-sharepoint.ts --listar",
     "sharepoint:sync": "tsx scripts/sync-sharepoint.ts",
+    "graph:login": "tsx scripts/graph-login.ts",
     "control-precios:probar-delta": "tsx scripts/probar-delta-precios.ts",
     "rrhh:listar": "tsx scripts/sync-rrhh.ts --listar",
     "rrhh:sync": "tsx scripts/sync-rrhh.ts",
@@ -38,6 +39,7 @@
     "next-auth": "^5.0.0-beta.31",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "recharts": "^3.10.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
