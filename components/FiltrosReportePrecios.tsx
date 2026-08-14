@@ -22,10 +22,15 @@ export function FiltrosReportePrecios({
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  const localIdsSeleccionados = (searchParams.get("local") ?? "")
-    .split(",")
-    .map((v) => Number(v.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0);
+  function parseIds(param: string | null): number[] {
+    return (param ?? "")
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  }
+
+  const localIdsSeleccionados = parseIds(searchParams.get("local"));
+  const proveedorIdsSeleccionados = parseIds(searchParams.get("proveedor"));
 
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -49,26 +54,19 @@ export function FiltrosReportePrecios({
       </div>
       <div className="flex flex-col gap-1">
         <label className="text-xs text-slate-500">Restaurantes</label>
-        <SelectorRestaurantes
-          locales={locales}
+        <SelectorMultiple
+          opciones={locales}
           seleccionados={localIdsSeleccionados}
           onChange={(ids) => actualizar("local", ids.join(","))}
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-slate-500">Proveedor</label>
-        <select
-          defaultValue={searchParams.get("proveedor") ?? ""}
-          onChange={(e) => actualizar("proveedor", e.target.value)}
-          className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
-        >
-          <option value="">Todos</option>
-          {proveedores.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nombre}
-            </option>
-          ))}
-        </select>
+        <label className="text-xs text-slate-500">Proveedores</label>
+        <SelectorMultiple
+          opciones={proveedores}
+          seleccionados={proveedorIdsSeleccionados}
+          onChange={(ids) => actualizar("proveedor", ids.join(","))}
+        />
       </div>
       <div className="flex flex-col gap-1">
         <label className="text-xs text-slate-500">Categoría</label>
@@ -89,16 +87,16 @@ export function FiltrosReportePrecios({
   );
 }
 
-/** Combo con checkboxes: permite elegir "todos" (nada tildado), un único
- * restaurante, o cualquier subconjunto elegido a mano — a diferencia de un
- * <select> nativo, donde no es obvio para alguien no técnico que Ctrl/Cmd+click
- * habilita selección múltiple. */
-function SelectorRestaurantes({
-  locales,
+/** Combo con checkboxes: permite elegir "todos" (nada tildado), una sola opción,
+ * o cualquier subconjunto elegido a mano — a diferencia de un <select> nativo,
+ * donde no es obvio para alguien no técnico que Ctrl/Cmd+click habilita
+ * selección múltiple. Genérico: lo usan tanto Restaurantes como Proveedores. */
+function SelectorMultiple({
+  opciones,
   seleccionados,
   onChange,
 }: {
-  locales: { id: number; nombre: string }[];
+  opciones: { id: number; nombre: string }[];
   seleccionados: number[];
   onChange: (ids: number[]) => void;
 }) {
@@ -117,7 +115,7 @@ function SelectorRestaurantes({
     seleccionados.length === 0
       ? "Todos"
       : seleccionados.length === 1
-        ? (locales.find((l) => l.id === seleccionados[0])?.nombre ?? "1 seleccionado")
+        ? (opciones.find((o) => o.id === seleccionados[0])?.nombre ?? "1 seleccionado")
         : `${seleccionados.length} seleccionados`;
 
   function alternar(id: number) {
@@ -149,20 +147,20 @@ function SelectorRestaurantes({
             {seleccionados.length === 0 && <span>✓</span>}
           </button>
           <div className="max-h-56 overflow-y-auto border-t border-slate-100 pt-1">
-            {locales.map((l) => {
-              const marcado = seleccionados.includes(l.id);
+            {opciones.map((o) => {
+              const marcado = seleccionados.includes(o.id);
               return (
                 <label
-                  key={l.id}
+                  key={o.id}
                   className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   <input
                     type="checkbox"
                     checked={marcado}
-                    onChange={() => alternar(l.id)}
+                    onChange={() => alternar(o.id)}
                     className="rounded border-slate-300"
                   />
-                  {l.nombre}
+                  {o.nombre}
                 </label>
               );
             })}

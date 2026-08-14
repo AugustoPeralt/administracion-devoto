@@ -17,6 +17,7 @@ import {
   obtenerLocales,
   obtenerProveedores,
   parseLocalIds,
+  parseProveedorIds,
   quincenaActual,
 } from "@/lib/control-precios/consultas";
 import { UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
@@ -35,10 +36,10 @@ export default async function ReportePreciosPage({
   const desde = params.desde || defaultQuincena.desde;
   const hasta = params.hasta || defaultQuincena.hasta;
   const localIds = parseLocalIds(params.local);
-  const proveedorId = params.proveedor ? Number(params.proveedor) : undefined;
+  const proveedorIds = parseProveedorIds(params.proveedor);
   const categoria = (params.categoria as CategoriaInsumo | undefined) || undefined;
 
-  const filtros = { desde, hasta, localIds, proveedorId, categoria };
+  const filtros = { desde, hasta, localIds, proveedorIds, categoria };
 
   const [
     locales,
@@ -100,7 +101,7 @@ export default async function ReportePreciosPage({
     desde,
     hasta,
     ...(localIds && localIds.length > 0 ? { local: localIds.join(",") } : {}),
-    ...(proveedorId ? { proveedor: String(proveedorId) } : {}),
+    ...(proveedorIds && proveedorIds.length > 0 ? { proveedor: proveedorIds.join(",") } : {}),
     ...(categoria ? { categoria } : {}),
   }).toString();
 

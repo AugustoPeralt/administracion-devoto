@@ -6,6 +6,7 @@ import {
   obtenerHistorialComprasPorProducto,
   obtenerTopMasCompradosCriolloEmporio,
   parseLocalIds,
+  parseProveedorIds,
   precioRealAjustado,
   quincenaActual,
   type FiltrosReporte,
@@ -47,14 +48,13 @@ export async function GET(request: Request) {
   const defaultQuincena = quincenaActual();
   const desde = url.searchParams.get("desde") || defaultQuincena.desde;
   const hasta = url.searchParams.get("hasta") || defaultQuincena.hasta;
-  const proveedorIdParam = url.searchParams.get("proveedor");
   const categoriaParam = url.searchParams.get("categoria");
 
   const filtros: FiltrosReporte = {
     desde,
     hasta,
     localIds: parseLocalIds(url.searchParams.get("local")),
-    proveedorId: proveedorIdParam ? Number(proveedorIdParam) : undefined,
+    proveedorIds: parseProveedorIds(url.searchParams.get("proveedor")),
     categoria: (categoriaParam as CategoriaInsumo | null) || undefined,
   };
 

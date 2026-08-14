@@ -1,57 +1,79 @@
 "use client";
 
-import type { BarShapeProps } from "recharts";
-import { Bar, BarChart, CartesianGrid, LabelList, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { PieSectorShapeProps, TooltipContentProps } from "recharts";
+import { Pie, PieChart, ResponsiveContainer, Sector, Tooltip } from "recharts";
 import { formatoMoneda } from "@/lib/formato";
 import { COLOR_POR_CATEGORIA } from "@/lib/control-precios/colores-graficos";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
-import { GraficoTooltip } from "./GraficoTooltip";
 
-const ALTO_POR_BARRA = 38;
-const ALTO_MINIMO = 140;
+const DIAMETRO = 220;
 
-/** Gasto por categoría — a diferencia de proveedor/producto, acá sí hay
- * identidad real por color (categorías fijas, mismo color en toda la app) por
- * eso usa la paleta categórica en vez de un hue único. */
+function TooltipDonut({ active, payload }: TooltipContentProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  const punto = payload[0];
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
+      <p className="font-medium text-slate-900">{String(punto.name)}</p>
+      <p className="mt-0.5 text-slate-600">{formatoMoneda(Number(punto.value))}</p>
+    </div>
+  );
+}
+
+/** Gasto por categoría — donut con la paleta categórica fija (mismo color por
+ * categoría en toda la app) y una leyenda al lado con el detalle en pesos y %,
+ * ya que con solo el color no alcanza para identificar cada porción. */
 export function GraficoGastoPorCategoria({ datos }: { datos: { categoria: CategoriaInsumo; total: number }[] }) {
   if (datos.length === 0) {
     return <p className="px-3 py-6 text-center text-sm text-slate-400">Sin gasto registrado en este período.</p>;
   }
 
-  const alto = Math.max(ALTO_MINIMO, datos.length * ALTO_POR_BARRA + 24);
+  const total = datos.reduce((acc, d) => acc + d.total, 0);
 
   return (
-    <ResponsiveContainer width="100%" height={alto}>
-      <BarChart data={datos} layout="vertical" margin={{ top: 4, right: 64, bottom: 4, left: 4 }}>
-        <CartesianGrid horizontal={false} stroke="#e1e0d9" />
-        <XAxis
-          type="number"
-          tickFormatter={(v: number) => formatoMoneda(v)}
-          tick={{ fill: "#898781", fontSize: 11 }}
-          axisLine={{ stroke: "#c3c2b7" }}
-          tickLine={false}
-        />
-        <YAxis
-          type="category"
-          dataKey="categoria"
-          width={110}
-          tick={{ fill: "#52514e", fontSize: 12 }}
-          axisLine={{ stroke: "#c3c2b7" }}
-          tickLine={false}
-        />
-        <Tooltip content={GraficoTooltip} cursor={{ fill: "#f9f9f7" }} />
-        <Bar
-          dataKey="total"
-          radius={[0, 4, 4, 0]}
-          barSize={22}
-          shape={(props: BarShapeProps) => {
-            const categoria = (props.payload as { categoria: CategoriaInsumo }).categoria;
-            return <Rectangle {...props} fill={COLOR_POR_CATEGORIA[categoria]} />;
-          }}
-        >
-          <LabelList dataKey="total" position="right" formatter={(v) => formatoMoneda(Number(v))} style={{ fill: "#52514e", fontSize: 11 }} />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+      <div className="relative shrink-0" style={{ width: DIAMETRO, height: DIAMETRO }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={datos}
+              dataKey="total"
+              nameKey="categoria"
+              cx="50%"
+              cy="50%"
+              innerRadius="62%"
+              outerRadius="92%"
+              paddingAngle={2}
+              stroke="none"
+              shape={(props: PieSectorShapeProps) => {
+                const categoria = (props.payload as { categoria: CategoriaInsumo }).categoria;
+                return <Sector {...props} fill={COLOR_POR_CATEGORIA[categoria]} />;
+              }}
+            />
+            <Tooltip content={TooltipDonut} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xs text-slate-500">Total</span>
+          <span className="text-base font-semibold text-slate-950">{formatoMoneda(total)}</span>
+        </div>
+      </div>
+
+      <ul className="flex flex-col gap-2">
+        {datos.map((d) => {
+          const porcentaje = total > 0 ? (d.total / total) * 100 : 0;
+          return (
+            <li key={d.categoria} className="flex items-center gap-2 text-sm">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: COLOR_POR_CATEGORIA[d.categoria] }}
+              />
+              <span className="w-24 shrink-0 text-slate-700">{d.categoria}</span>
+              <span className="font-medium text-slate-900">{formatoMoneda(d.total)}</span>
+              <span className="text-xs text-slate-400">{porcentaje.toFixed(0)}%</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

@@ -531,7 +531,9 @@ export type FiltrosReporte = {
   // permite elegir "todos", "uno solo" o "un subconjunto elegido" desde la misma
   // pantalla, sin necesitar tres controles distintos.
   localIds?: number[];
-  proveedorId?: number;
+  // Vacío o ausente = todos los proveedores. Uno o varios ids = solo esos —
+  // mismo criterio "todos/uno/subconjunto" que localIds.
+  proveedorIds?: number[];
   categoria?: CategoriaInsumo;
 };
 
@@ -545,6 +547,13 @@ export function parseLocalIds(param: string | null | undefined): number[] | unde
     .map((v) => Number(v.trim()))
     .filter((n) => Number.isFinite(n));
   return ids.length > 0 ? ids : undefined;
+}
+
+/** Igual que parseLocalIds, para el parámetro "proveedor" (ids separados por
+ * coma) — mismo formato para poder filtrar por varios proveedores a la vez
+ * (ej. comparar el gasto de Emporio + Criollo + HORECA juntos en un local). */
+export function parseProveedorIds(param: string | null | undefined): number[] | undefined {
+  return parseLocalIds(param);
 }
 
 /** Convierte una lista de ids a la sintaxis de array literal de Postgres
@@ -592,8 +601,9 @@ export async function obtenerDeltaPrecios(
   filtros: FiltrosReporte,
   ejecutor: Ejecutor = db
 ): Promise<FilaDeltaPrecio[]> {
-  const { desde, hasta, localIds, proveedorId = null, categoria = null } = filtros;
+  const { desde, hasta, localIds, proveedorIds, categoria = null } = filtros;
   const localIdsLit = literalArrayInt(localIds);
+  const proveedorIdsLit = literalArrayInt(proveedorIds);
 
   const resultado = await ejecutor.execute(sql`
     WITH primero_periodo AS (
@@ -640,7 +650,7 @@ export async function obtenerDeltaPrecios(
     LEFT JOIN primero_periodo pp ON pp.producto_id = up.producto_id AND pp.local_id IS NOT DISTINCT FROM up.local_id
     LEFT JOIN alq_locales loc ON loc.id = up.local_id
     WHERE (${localIdsLit}::int[] IS NULL OR up.local_id = ANY(${localIdsLit}::int[]))
-      AND (${proveedorId}::int IS NULL OR up.proveedor_id = ${proveedorId})
+      AND (${proveedorIdsLit}::int[] IS NULL OR up.proveedor_id = ANY(${proveedorIdsLit}::int[]))
       AND (${categoria}::text IS NULL OR up.categoria = ${categoria})
     ORDER BY "porcentajeAumento" DESC NULLS LAST
   `);
@@ -648,16 +658,20 @@ export async function obtenerDeltaPrecios(
   return resultado.rows as unknown as FilaDeltaPrecio[];
 }
 
-/** Gasto total (suma de subtotales) dentro del período, opcionalmente por local. */
+/** Gasto total (suma de subtotales) dentro del período, opcionalmente por local
+ * y por proveedor(es). */
 export async function obtenerGastoTotalPeriodo(filtros: FiltrosReporte): Promise<number> {
-  const { desde, hasta, localIds } = filtros;
+  const { desde, hasta, localIds, proveedorIds } = filtros;
   const localIdsLit = literalArrayInt(localIds);
+  const proveedorIdsLit = literalArrayInt(proveedorIds);
   const resultado = await db.execute(sql`
     SELECT COALESCE(SUM(df.subtotal), 0) AS total
     FROM cp_detalle_facturas df
     JOIN cp_facturas f ON f.id = df.factura_id
+    JOIN cp_productos p ON p.id = df.producto_id
     WHERE f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       AND (${localIdsLit}::int[] IS NULL OR f.local_id = ANY(${localIdsLit}::int[]))
+      AND (${proveedorIdsLit}::int[] IS NULL OR p.proveedor_id = ANY(${proveedorIdsLit}::int[]))
   `);
   return Number((resultado.rows[0] as { total: string }).total);
 }
@@ -667,8 +681,9 @@ export async function obtenerGastoTotalPeriodo(filtros: FiltrosReporte): Promise
 export async function obtenerGastoPorCategoria(
   filtros: FiltrosReporte
 ): Promise<{ categoria: CategoriaInsumo; total: number }[]> {
-  const { desde, hasta, localIds } = filtros;
+  const { desde, hasta, localIds, proveedorIds } = filtros;
   const localIdsLit = literalArrayInt(localIds);
+  const proveedorIdsLit = literalArrayInt(proveedorIds);
   const resultado = await db.execute(sql`
     SELECT prov.categoria AS categoria, COALESCE(SUM(df.subtotal), 0) AS total
     FROM cp_detalle_facturas df
@@ -677,6 +692,7 @@ export async function obtenerGastoPorCategoria(
     JOIN cp_proveedores prov ON prov.id = p.proveedor_id
     WHERE f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       AND (${localIdsLit}::int[] IS NULL OR f.local_id = ANY(${localIdsLit}::int[]))
+      AND (${proveedorIdsLit}::int[] IS NULL OR prov.id = ANY(${proveedorIdsLit}::int[]))
     GROUP BY prov.categoria
     ORDER BY total DESC
   `);
@@ -778,8 +794,9 @@ export async function obtenerHistorialComprasPorProducto(
   filtros: FiltrosReporte,
   agruparPorLocal: boolean = false
 ): Promise<FilaHistorialCompras[]> {
-  const { desde, hasta, localIds, proveedorId = null, categoria = null } = filtros;
+  const { desde, hasta, localIds, proveedorIds, categoria = null } = filtros;
   const localIdsLit = literalArrayInt(localIds);
+  const proveedorIdsLit = literalArrayInt(proveedorIds);
   const resultado = await db.execute(sql`
     SELECT
       p.id AS "productoId", p.nombre AS "productoNombre", p.unidad_medida AS "unidadMedida",
@@ -794,7 +811,7 @@ export async function obtenerHistorialComprasPorProducto(
     LEFT JOIN alq_locales loc ON loc.id = f.local_id
     WHERE f.estado = 'confirmada' AND f.fecha_emision BETWEEN ${desde} AND ${hasta}
       AND (${localIdsLit}::int[] IS NULL OR f.local_id = ANY(${localIdsLit}::int[]))
-      AND (${proveedorId}::int IS NULL OR prov.id = ${proveedorId})
+      AND (${proveedorIdsLit}::int[] IS NULL OR prov.id = ANY(${proveedorIdsLit}::int[]))
       AND (${categoria}::text IS NULL OR prov.categoria = ${categoria})
     ORDER BY p.nombre, f.fecha_emision ASC
   `);
@@ -981,8 +998,26 @@ export async function obtenerComparacionEntreRestaurantes(): Promise<Comparacion
       -- comparar contra eso genera alertas de "aumento" que en realidad son
       -- un error de lectura, no un precio real. Caso real: factura 568
       -- (2026-08-04) generó 3 falsas alertas de +200% por esto.
+      --
+      -- Reconciliación contra subtotal_impreso, AUNQUE descuento sea null: a
+      -- diferencia de gastoVerificado (que solo chequea esto cuando hay
+      -- descuento, porque sin descuento cantidad×precio "debería" ser exacto
+      -- por construcción), acá un renglón con cantidad mal leída por la IA
+      -- también da cantidad×precio ≠ subtotal_impreso aunque descuento sea
+      -- null — y ESE renglón no puede alimentar una alerta de precio. Caso
+      -- real: factura 568 (2026-08-04, El Criollo, confirmada) con varios
+      -- renglones de cantidad corrida (ver scripts de corrección de esa
+      -- fecha) generó comparaciones de +290% a +1400% con precios inflados
+      -- por un factor entero (2x, 5x, 12x) — el precio_unitario en sí no
+      -- estaba mal, pero no es confiable para comparar hasta que alguien
+      -- revise la foto y corrija cantidad/producto.
       WHERE df.precio_unitario IS NOT NULL AND df.precio_unitario > 0 AND f.local_id IS NOT NULL
         AND f.estado = 'confirmada'
+        AND (
+          df.subtotal_impreso IS NULL
+          OR ABS(df.subtotal - df.subtotal_impreso) <= ${TOLERANCIA_SUBTOTAL}
+          OR df.verificado_manual
+        )
     ),
     pares AS (
       SELECT
