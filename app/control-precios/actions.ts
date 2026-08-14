@@ -1017,10 +1017,10 @@ export type DatosComparacionRestaurantes = {
 /** Archiva un caso de obtenerComparacionEntreRestaurantes() (mismo proveedor,
  * distinto precio entre restaurantes) para que deje de ocupar la alerta
  * principal — ver cpComparacionesRestaurantesRevisadas en db/schema.ts para el
- * criterio de "misma situación" (producto + par de locales, sin importar cuál
- * es el barato en cada momento). A diferencia de
- * justificarFacturasPosibleDuplicado, el comentario acá es opcional: no se
- * está justificando un error, es un "ya lo vi" rápido. */
+ * criterio de "misma situación" (producto + par de locales + el precio
+ * mínimo/máximo puntual que se revisó — si el precio cambia después, vuelve a
+ * alertar). A diferencia de justificarFacturasPosibleDuplicado, el comentario
+ * acá es opcional: no se está justificando un error, es un "ya lo vi" rápido. */
 export async function confirmarComparacionRestaurantes(
   datos: DatosComparacionRestaurantes,
   comentario?: string
@@ -1055,6 +1055,8 @@ export async function confirmarComparacionRestaurantes(
         cpComparacionesRestaurantesRevisadas.productoId,
         cpComparacionesRestaurantesRevisadas.localAId,
         cpComparacionesRestaurantesRevisadas.localBId,
+        cpComparacionesRestaurantesRevisadas.precioMinimo,
+        cpComparacionesRestaurantesRevisadas.precioMaximo,
       ],
     });
 

@@ -786,21 +786,28 @@ export const cpFacturasRepetidasRevisadas = pgTable(
 );
 
 /**
- * Marca un producto + par de restaurantes como revisado en
+ * Marca un producto + par de restaurantes + PRECIOS PUNTUALES como revisado en
  * obtenerComparacionEntreRestaurantes() (mismo proveedor, distinto precio entre
- * restaurantes) — para que deje de ocupar la alerta principal aunque sigan
- * llegando facturas nuevas de ese mismo par, sin perder el dato (queda en el
- * "archivo" que lee obtenerComparacionesRestaurantesRevisadas()).
+ * restaurantes) — para que deje de ocupar la alerta principal, sin perder el
+ * dato (queda en el "archivo" que lee obtenerComparacionesRestaurantesRevisadas()).
  *
  * localAId/localBId guardan el par de locales SIN orden (LEAST/GREATEST de los
- * dos ids) — es la clave de "misma situación", independiente de cuál de los
- * dos sea el más barato en cada momento. Si más adelante la diferencia de
- * precio para ese producto aparece entre un par de locales DISTINTO, ya no
- * matchea esta fila y vuelve a aparecer como alerta nueva — mismo criterio que
- * cpFacturasRepetidasRevisadas (no arrastrar una resolución vieja sobre una
- * situación que cambió de composición).
+ * dos ids) — es parte de la clave de "misma situación", independiente de cuál
+ * de los dos sea el más barato en cada momento.
  *
- * El resto de las columnas (localMasBaratoId, precioMinimo, ..., porcentajeDiferencia)
+ * precioMinimo/precioMaximo son TAMBIÉN parte de esa clave (columna única
+ * productoId+localAId+localBId+precioMinimo+precioMaximo, ver índice más abajo)
+ * — decisión del usuario (2026-08-14, caso real: Alyser S.A. "CREMA MILKAUT
+ * POTE X 5 LTS (74)", Roma con Amor vs Piante): si solo se archivara por
+ * producto+par de locales, una diferencia de $48.113 vs $53.459 ya revisada
+ * tapaba para siempre cualquier diferencia NUEVA entre esos mismos dos
+ * locales aunque el precio cambiara después (confirmado con un caso real
+ * donde una diferencia más grande, 16.28% contra el 14.11% archivado, quedó
+ * invisible). Con precio incluido en la clave, archivar "$48.113 vs $53.459"
+ * solo apaga esa combinación exacta — si el precio de cualquiera de los dos
+ * lados cambia, vuelve a aparecer como alerta nueva para que alguien la mire.
+ *
+ * El resto de las columnas (localMasBaratoId, fechaMasBarato, ..., porcentajeDiferencia)
  * son una FOTO de la comparación al momento de confirmar, para poder mostrarla
  * en el archivo sin recalcular contra el estado actual de las facturas.
  *
@@ -842,7 +849,15 @@ export const cpComparacionesRestaurantesRevisadas = pgTable(
     usuarioEmail: text("usuario_email").notNull(),
     creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("cp_comparaciones_revisadas_par_idx").on(t.productoId, t.localAId, t.localBId)]
+  (t) => [
+    uniqueIndex("cp_comparaciones_revisadas_par_idx").on(
+      t.productoId,
+      t.localAId,
+      t.localBId,
+      t.precioMinimo,
+      t.precioMaximo
+    ),
+  ]
 );
 
 export const cpTipoDuplicadoEnum = pgEnum("cp_tipo_duplicado", ["proveedor", "producto"]);

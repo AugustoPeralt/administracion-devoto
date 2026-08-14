@@ -1,0 +1,2 @@
+DROP INDEX "cp_comparaciones_revisadas_par_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "cp_comparaciones_revisadas_par_idx" ON "cp_comparaciones_restaurantes_revisadas" USING btree ("producto_id","local_a_id","local_b_id","precio_minimo","precio_maximo");

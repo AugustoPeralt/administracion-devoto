@@ -980,7 +980,17 @@ export type ComparacionEntreRestaurantes = {
  * DIAS_MAX_DIFERENCIA_COMPARACION_RESTAURANTES días o menos entre sí (si un
  * local no cargó nada reciente de ese producto, la diferencia contra una
  * compra vieja del otro local no es comprobable — puede ser solo que falte
- * cargar la compra de hoy), y de esos pares válidos muestra el más reciente.
+ * cargar la compra de hoy).
+ *
+ * Una fila por CADA PAR DE RESTAURANTES con diferencia vigente para un mismo
+ * producto, no una sola fila por producto — decisión del usuario (2026-08-14):
+ * antes el DISTINCT ON colapsaba a un solo par (el más reciente) por producto,
+ * y una diferencia más grande entre otro par de locales quedaba invisible
+ * detrás de una más chica pero más nueva (caso real: Alyser S.A. "CREMA
+ * MILKAUT POTE X 5 LTS (74)", Tavlon↔Piante 11.52% tapaba a Macarons↔Piante
+ * 16.28%, que era mayor). Para cada par de locales se sigue mostrando solo el
+ * cruce más reciente entre ESE par (no todas las combinaciones de fecha
+ * posibles), para no repetir la misma diferencia varias veces.
  * Devuelve también el id de cada factura (para poder abrir el comprobante
  * original de cada lado y comparar a simple vista, ver
  * /api/control-precios/ver-comprobante/[facturaId]).
@@ -1037,7 +1047,7 @@ export async function obtenerComparacionEntreRestaurantes(): Promise<Comparacion
         AND GREATEST(a.precio, b.precio) > LEAST(a.precio, b.precio) * (1 + ${UMBRAL_DIFERENCIA_ENTRE_RESTAURANTES / 100}::numeric)
     )
     SELECT * FROM (
-      SELECT DISTINCT ON (pr.producto_id)
+      SELECT DISTINCT ON (pr.producto_id, LEAST(pr.local_barato_id, pr.local_caro_id), GREATEST(pr.local_barato_id, pr.local_caro_id))
         p.id AS "productoId", p.nombre AS "productoNombre", prov.nombre AS "proveedorNombre",
         locBarato.id AS "localMasBaratoId", locBarato.nombre AS "localMasBarato", pr.precio_barato AS "precioMinimo",
         pr.fecha_barato AS "fechaMasBarato", pr.factura_barato_id AS "facturaIdMasBarato",
@@ -1051,18 +1061,31 @@ export async function obtenerComparacionEntreRestaurantes(): Promise<Comparacion
       JOIN alq_locales locCaro ON locCaro.id = pr.local_caro_id
       -- Descarta pares ya archivados desde el panel (ver
       -- cp_comparaciones_restaurantes_revisadas / obtenerComparacionesRestaurantesRevisadas)
-      -- ANTES de que DISTINCT ON elija el ganador por producto: así, si ese
-      -- producto tiene ADEMÁS un par de locales distinto sin archivar, ese otro
-      -- par sigue pudiendo ganar la selección en vez de que el producto entero
-      -- desaparezca de la alerta.
+      -- ANTES de que DISTINCT ON elija el ganador por (producto, par de locales):
+      -- así, si ESE mismo par de locales tiene una combinación de precios sin
+      -- archivar, esa sigue pudiendo ganar la selección en vez de perderse.
+      --
+      -- El match incluye precio_minimo/precio_maximo, no solo producto+locales:
+      -- archivar "$48.113 vs $53.459" no debe tapar para siempre cualquier
+      -- diferencia futura entre esos mismos dos locales para ese producto — solo
+      -- esa combinación exacta de precios. Caso real que motivó el cambio
+      -- (2026-08-14): Alyser S.A. "CREMA MILKAUT POTE X 5 LTS (74)" quedó con una
+      -- diferencia nueva de 16.28% invisible porque ya había una vieja de 14.11%
+      -- archivada para el mismo par de locales con otro precio.
       WHERE NOT EXISTS (
         SELECT 1 FROM cp_comparaciones_restaurantes_revisadas r
         WHERE r.producto_id = pr.producto_id
           AND r.local_a_id = LEAST(pr.local_barato_id, pr.local_caro_id)
           AND r.local_b_id = GREATEST(pr.local_barato_id, pr.local_caro_id)
+          AND r.precio_minimo = pr.precio_barato
+          AND r.precio_maximo = pr.precio_caro
       )
-      -- por producto, el par válido más reciente; a igual fecha, el de mayor diferencia.
-      ORDER BY pr.producto_id, pr.fecha_mas_reciente DESC, (pr.precio_caro - pr.precio_barato) DESC
+      -- por producto + par de locales, el cruce válido más reciente ENTRE ESE
+      -- PAR; a igual fecha, el de mayor diferencia. Distintos pares de locales
+      -- para el mismo producto quedan cada uno como su propia fila (ver
+      -- comentario de la función) — ya no se pisan entre sí.
+      ORDER BY pr.producto_id, LEAST(pr.local_barato_id, pr.local_caro_id), GREATEST(pr.local_barato_id, pr.local_caro_id),
+        pr.fecha_mas_reciente DESC, (pr.precio_caro - pr.precio_barato) DESC
     ) sub
     ORDER BY "porcentajeDiferencia" DESC
   `);
