@@ -8,6 +8,8 @@ import {
   cpDuplicadosDescartados,
   cpFacturas,
   cpFacturasRepetidasRevisadas,
+  cpListasPreciosHistorial,
+  cpListasPreciosProveedor,
   cpProductos,
   cpProveedores,
 } from "@/db/schema";
@@ -925,11 +927,23 @@ export async function fusionarProveedoresInterno(
     if (existenteEnCanonico) {
       // Ya hay un producto con el mismo nombre bajo el canónico — mover el detalle
       // de facturas ahí y borrar el producto duplicado (si no, quedaría huérfano al
-      // borrar el proveedor, o violaría el unique index nombre+proveedor).
+      // borrar el proveedor, o violaría el unique index nombre+proveedor). También hay
+      // que mover el vínculo de las listas de precios (vigente e histórico), o el
+      // borrado revienta la FK de cp_listas_precios_proveedor/cp_listas_precios_historial
+      // hacia cp_productos (caso real: producto vinculado desde una importación de lista
+      // de precios, no solo desde facturas).
       await ejecutor
         .update(cpDetalleFacturas)
         .set({ productoId: existenteEnCanonico.id })
         .where(eq(cpDetalleFacturas.productoId, producto.id));
+      await ejecutor
+        .update(cpListasPreciosProveedor)
+        .set({ productoId: existenteEnCanonico.id })
+        .where(eq(cpListasPreciosProveedor.productoId, producto.id));
+      await ejecutor
+        .update(cpListasPreciosHistorial)
+        .set({ productoId: existenteEnCanonico.id })
+        .where(eq(cpListasPreciosHistorial.productoId, producto.id));
       await ejecutor.delete(cpProductos).where(eq(cpProductos.id, producto.id));
     } else {
       await ejecutor.update(cpProductos).set({ proveedorId: canonicoId }).where(eq(cpProductos.id, producto.id));
@@ -1216,6 +1230,18 @@ export async function fusionarProductosInterno(
     .update(cpDetalleFacturas)
     .set({ productoId: canonicoId })
     .where(eq(cpDetalleFacturas.productoId, duplicadoId));
+
+  // Igual que en fusionarProveedoresInterno: mover también el vínculo de las listas
+  // de precios (vigente e histórico), o el borrado revienta su FK hacia cp_productos
+  // cuando el duplicado está vinculado desde una importación de lista de precios.
+  await ejecutor
+    .update(cpListasPreciosProveedor)
+    .set({ productoId: canonicoId })
+    .where(eq(cpListasPreciosProveedor.productoId, duplicadoId));
+  await ejecutor
+    .update(cpListasPreciosHistorial)
+    .set({ productoId: canonicoId })
+    .where(eq(cpListasPreciosHistorial.productoId, duplicadoId));
 
   await ejecutor.delete(cpProductos).where(eq(cpProductos.id, duplicadoId));
 }
