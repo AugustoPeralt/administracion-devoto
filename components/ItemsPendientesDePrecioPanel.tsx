@@ -1,6 +1,6 @@
 "use client";
 
-import { asignarPrecioManual } from "@/app/control-precios/actions";
+import { asignarPrecioManual, eliminarItemDetalle } from "@/app/control-precios/actions";
 import { parseNumeroDecimal } from "@/lib/formato";
 import type { ItemPendienteDePrecio } from "@/lib/control-precios/consultas";
 import { useRouter } from "next/navigation";
@@ -29,12 +29,26 @@ export function ItemsPendientesDePrecioPanel({ items }: { items: ItemPendienteDe
     }
   }
 
+  async function eliminar(detalleId: number) {
+    setError(null);
+    setGuardando(detalleId);
+    try {
+      await eliminarItemDetalle(detalleId);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al eliminar el ítem.");
+    } finally {
+      setGuardando(null);
+    }
+  }
+
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
       <h2 className="mb-1 text-sm font-semibold text-amber-900">Ítems sin precio ({items.length})</h2>
       <p className="mb-3 text-xs text-amber-700">
         Quedaron sin precio al confirmar (típico de un remito de VERDULERIA que no trae precio impreso). La
-        factura completa queda &quot;pendiente de revisión&quot; hasta asignarles un precio.
+        factura completa queda &quot;pendiente de revisión&quot; hasta asignarles un precio. Si en la factura real
+        tampoco había precio (no es un dato faltante, nunca existió), se puede borrar el ítem directamente.
       </p>
       <div className="space-y-2">
         {items.map((it) => (
@@ -73,6 +87,14 @@ export function ItemsPendientesDePrecioPanel({ items }: { items: ItemPendienteDe
               className="rounded-md bg-slate-950 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {guardando === it.detalleId ? "Guardando..." : "Asignar"}
+            </button>
+            <button
+              type="button"
+              disabled={guardando === it.detalleId}
+              onClick={() => void eliminar(it.detalleId)}
+              className="rounded-md border border-rose-300 bg-white px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              No tenía precio, borrar
             </button>
           </div>
         ))}

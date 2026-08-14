@@ -844,3 +844,35 @@ export const cpComparacionesRestaurantesRevisadas = pgTable(
   },
   (t) => [uniqueIndex("cp_comparaciones_revisadas_par_idx").on(t.productoId, t.localAId, t.localBId)]
 );
+
+export const cpTipoDuplicadoEnum = pgEnum("cp_tipo_duplicado", ["proveedor", "producto"]);
+
+/**
+ * Marca una sugerencia de agruparPosiblesDuplicados() / agruparPosiblesProductosDuplicados()
+ * (lib/control-precios/consultas.ts) como revisada y descartada — el caso real que motivó
+ * esto: dos proveedores (Avícola, Chisfrut) con nombres y montos totalmente distintos quedaron
+ * agrupados solo porque comparten CUIT normalizado (típicamente un CUIT mal cargado en uno de
+ * los dos, o el mismo CUIT guardado en formatos distintos de antes de que buscarOCrearProveedor
+ * empezara a normalizar — ver comentario de agruparPosiblesDuplicados). Descartar la sugerencia
+ * NO fusiona ni borra nada, solo saca ese grupo puntual del panel — la fusión real sigue
+ * pasando por fusionarProveedores()/fusionarProductos().
+ *
+ * `tipo` distingue si `ids` son de cp_proveedores o cp_productos — una sola tabla en vez de dos
+ * casi idénticas, mismo criterio de reuso que el resto del módulo. `ids` es la clave del caso
+ * (ids del grupo sugerido, ordenados asc y unidos por coma, igual que cp_facturas_repetidas_revisadas.factura_ids):
+ * si el grupo sugerido cambia de composición en una corrida futura del detector, la clave ya no
+ * matchea y la sugerencia vuelve a aparecer — preferible a arrastrar una resolución vieja sobre
+ * un grupo que ya no es el mismo.
+ */
+export const cpDuplicadosDescartados = pgTable(
+  "cp_duplicados_descartados",
+  {
+    id: serial("id").primaryKey(),
+    tipo: cpTipoDuplicadoEnum("tipo").notNull(),
+    ids: text("ids").notNull(),
+    comentario: text("comentario").notNull(),
+    usuarioEmail: text("usuario_email").notNull(),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_duplicados_descartados_tipo_ids_idx").on(t.tipo, t.ids)]
+);

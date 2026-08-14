@@ -5,6 +5,7 @@ import { db } from "@/db";
 import {
   cpComparacionesRestaurantesRevisadas,
   cpDetalleFacturas,
+  cpDuplicadosDescartados,
   cpFacturas,
   cpFacturasRepetidasRevisadas,
   cpProductos,
@@ -1223,6 +1224,141 @@ export async function fusionarProductosInterno(
 export async function eliminarItemDetalle(detalleId: number) {
   await requerirSesion();
   await db.delete(cpDetalleFacturas).where(eq(cpDetalleFacturas.id, detalleId));
+  revalidatePath("/control-precios/proveedores");
+  revalidatePath("/control-precios/reportes");
+}
+
+/**
+ * Borra directamente una factura confirmada como copia duplicada real dentro de
+ * un caso de obtenerFacturasPosibleDuplicado() — a diferencia de
+ * justificarFacturasPosibleDuplicado() (que archiva el caso sin tocar datos
+ * porque no es un error), acá SÍ hay un error real de carga y hace falta sacar
+ * la copia de más de la base (ver scripts/limpiar-facturas-duplicadas-2026-08-07.ts,
+ * que hacía esto mismo a mano antes de que existiera esta acción). Deja
+ * registro en cpFacturasRepetidasRevisadas con estado "confirmado" (mismo
+ * mecanismo de clave que justificarFacturasPosibleDuplicado, ver ese comentario)
+ * para poder auditar después qué se borró y por qué. Borrar cp_facturas
+ * cascadea a cp_detalle_facturas (onDelete: "cascade" en el schema).
+ */
+export async function eliminarFacturaDuplicada(
+  facturaId: number,
+  proveedorId: number,
+  facturaIdsCaso: number[],
+  comentario: string
+) {
+  const session = await auth();
+  const usuarioEmail = session?.user?.email;
+  if (!usuarioEmail) throw new Error("Tenés que iniciar sesión para eliminar una factura.");
+  const comentarioLimpio = comentario.trim();
+  if (!comentarioLimpio) throw new Error("El motivo del borrado es obligatorio.");
+  if (facturaIdsCaso.length < 2) throw new Error("El caso tiene que tener al menos dos facturas.");
+  if (!facturaIdsCaso.includes(facturaId)) throw new Error("La factura no pertenece a este caso.");
+
+  const clave = [...facturaIdsCaso].sort((a, b) => a - b).join(",");
+
+  await db
+    .insert(cpFacturasRepetidasRevisadas)
+    .values({ proveedorId, facturaIds: clave, estado: "confirmado", comentario: comentarioLimpio, usuarioEmail })
+    .onConflictDoUpdate({
+      target: [cpFacturasRepetidasRevisadas.facturaIds],
+      set: { estado: "confirmado", comentario: comentarioLimpio, usuarioEmail, creadoEn: new Date() },
+    });
+
+  await db.delete(cpFacturas).where(eq(cpFacturas.id, facturaId));
+
+  revalidatePath("/control-precios/proveedores");
+  revalidatePath("/control-precios/reportes");
+}
+
+/** Clave de un grupo de posibles duplicados (proveedores o productos) — ids
+ * ordenados asc y unidos por coma, igual criterio que cpFacturasRepetidasRevisadas.facturaIds
+ * (ver ese comentario en db/schema.ts): si el grupo sugerido cambia de
+ * composición en una corrida futura del detector, la clave ya no matchea y la
+ * sugerencia vuelve a aparecer. */
+function claveGrupoDuplicado(ids: number[]): string {
+  return [...ids].sort((a, b) => a - b).join(",");
+}
+
+/** Descarta una sugerencia de agruparPosiblesDuplicados() (proveedores) — para
+ * el caso de dos proveedores reales y distintos agrupados por error (ej. mismo
+ * CUIT mal cargado en uno de los dos, ver cpDuplicadosDescartados en
+ * db/schema.ts). No fusiona ni borra nada, solo saca el grupo del panel; si
+ * además el CUIT está mal, corregirlo aparte con corregirCuitProveedor(). */
+export async function descartarProveedoresDuplicados(proveedorIds: number[], comentario: string) {
+  const session = await auth();
+  const usuarioEmail = session?.user?.email;
+  if (!usuarioEmail) throw new Error("Tenés que iniciar sesión para descartar esto.");
+  const comentarioLimpio = comentario.trim();
+  if (!comentarioLimpio) throw new Error("El comentario es obligatorio.");
+  if (proveedorIds.length < 2) throw new Error("El grupo tiene que tener al menos dos proveedores.");
+
+  await db
+    .insert(cpDuplicadosDescartados)
+    .values({
+      tipo: "proveedor",
+      ids: claveGrupoDuplicado(proveedorIds),
+      comentario: comentarioLimpio,
+      usuarioEmail,
+    })
+    .onConflictDoUpdate({
+      target: [cpDuplicadosDescartados.tipo, cpDuplicadosDescartados.ids],
+      set: { comentario: comentarioLimpio, usuarioEmail, creadoEn: new Date() },
+    });
+
+  revalidatePath("/control-precios/proveedores");
+}
+
+/** Igual que descartarProveedoresDuplicados() pero para
+ * agruparPosiblesProductosDuplicados() — dos productos del mismo proveedor con
+ * nombre parecido que en realidad son productos distintos. */
+export async function descartarProductosDuplicados(productoIds: number[], comentario: string) {
+  const session = await auth();
+  const usuarioEmail = session?.user?.email;
+  if (!usuarioEmail) throw new Error("Tenés que iniciar sesión para descartar esto.");
+  const comentarioLimpio = comentario.trim();
+  if (!comentarioLimpio) throw new Error("El comentario es obligatorio.");
+  if (productoIds.length < 2) throw new Error("El grupo tiene que tener al menos dos productos.");
+
+  await db
+    .insert(cpDuplicadosDescartados)
+    .values({
+      tipo: "producto",
+      ids: claveGrupoDuplicado(productoIds),
+      comentario: comentarioLimpio,
+      usuarioEmail,
+    })
+    .onConflictDoUpdate({
+      target: [cpDuplicadosDescartados.tipo, cpDuplicadosDescartados.ids],
+      set: { comentario: comentarioLimpio, usuarioEmail, creadoEn: new Date() },
+    });
+
+  revalidatePath("/control-precios/proveedores");
+}
+
+/** Corrige el CUIT de un proveedor cargado mal (causa típica de un falso
+ * positivo en agruparPosiblesDuplicados() por CUIT compartido — ver caso real
+ * en el comentario de cpDuplicadosDescartados en db/schema.ts). `cuit: null`
+ * lo limpia (vuelve a "sin CUIT"). Mismo criterio de normalización/validación
+ * que buscarOCrearProveedor(): solo dígitos, y matemáticamente válido (dígito
+ * verificador AFIP) o se rechaza. */
+export async function corregirCuitProveedor(proveedorId: number, cuit: string | null) {
+  await requerirSesion();
+
+  const cuitNormalizado = cuit?.trim() ? normalizarCuit(cuit) : null;
+  if (cuitNormalizado && !esCuitValido(cuitNormalizado)) {
+    throw new Error("El CUIT no es válido (dígito verificador incorrecto).");
+  }
+
+  try {
+    await db.update(cpProveedores).set({ cuit: cuitNormalizado }).where(eq(cpProveedores.id, proveedorId));
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : String(err);
+    if (mensaje.includes("cp_proveedores_cuit_idx")) {
+      throw new Error("Ya existe otro proveedor con ese CUIT.");
+    }
+    throw err;
+  }
+
   revalidatePath("/control-precios/proveedores");
   revalidatePath("/control-precios/reportes");
 }

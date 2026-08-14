@@ -1,5 +1,11 @@
 import { db } from "@/db";
-import { alqLocales, cpFacturasRepetidasRevisadas, cpListasPreciosProveedor, cpProveedores } from "@/db/schema";
+import {
+  alqLocales,
+  cpDuplicadosDescartados,
+  cpFacturasRepetidasRevisadas,
+  cpListasPreciosProveedor,
+  cpProveedores,
+} from "@/db/schema";
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
 import {
@@ -244,6 +250,20 @@ export function agruparPosiblesProductosDuplicados(
     grupos.push(...agruparPorNombreSimilar(lista));
   }
   return grupos;
+}
+
+/** Claves de grupos de posibles duplicados (agruparPosiblesDuplicados o
+ * agruparPosiblesProductosDuplicados según `tipo`) ya revisados y descartados
+ * por una persona — ver descartarProveedoresDuplicados()/descartarProductosDuplicados()
+ * en actions.ts y cpDuplicadosDescartados en db/schema.ts. El caller filtra los
+ * grupos sugeridos comparando `ids.map(g => g.id).sort((a,b)=>a-b).join(",")`
+ * contra este set, antes de mostrarlos en el panel. */
+export async function obtenerClavesDuplicadosDescartados(tipo: "proveedor" | "producto"): Promise<Set<string>> {
+  const filas = await db
+    .select({ ids: cpDuplicadosDescartados.ids })
+    .from(cpDuplicadosDescartados)
+    .where(eq(cpDuplicadosDescartados.tipo, tipo));
+  return new Set(filas.map((f) => f.ids));
 }
 
 export type FacturaFechaSospechosa = {

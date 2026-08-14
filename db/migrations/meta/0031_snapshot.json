@@ -1,0 +1,3291 @@
+{
+  "id": "f4a3f059-c6e9-46ca-ac9a-dc7649c3acb5",
+  "prevId": "5bfd4726-b5af-43f7-bf90-3056a32d4935",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.alertas_historicas_revisadas": {
+      "name": "alertas_historicas_revisadas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "concepto_id": {
+          "name": "concepto_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes": {
+          "name": "mes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "estado_duplicado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comentario": {
+          "name": "comentario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "alertas_historicas_caso_idx": {
+          "name": "alertas_historicas_caso_idx",
+          "columns": [
+            {
+              "expression": "concepto_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "alertas_historicas_revisadas_concepto_id_conceptos_esperados_id_fk": {
+          "name": "alertas_historicas_revisadas_concepto_id_conceptos_esperados_id_fk",
+          "tableFrom": "alertas_historicas_revisadas",
+          "tableTo": "conceptos_esperados",
+          "columnsFrom": [
+            "concepto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_alertas": {
+      "name": "alq_alertas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sync_run_id": {
+          "name": "sync_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prioridad": {
+          "name": "prioridad",
+          "type": "alq_prioridad_alerta",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local": {
+          "name": "local",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo_alerta": {
+          "name": "tipo_alerta",
+          "type": "alq_tipo_alerta",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "descripcion": {
+          "name": "descripcion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_evento": {
+          "name": "fecha_evento",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dias_restantes": {
+          "name": "dias_restantes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accion_requerida": {
+          "name": "accion_requerida",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alq_alertas_sync_run_id_alq_sync_runs_id_fk": {
+          "name": "alq_alertas_sync_run_id_alq_sync_runs_id_fk",
+          "tableFrom": "alq_alertas",
+          "tableTo": "alq_sync_runs",
+          "columnsFrom": [
+            "sync_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_alquileres_mensuales": {
+      "name": "alq_alquileres_mensuales",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "local": {
+          "name": "local",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proveedor_cbc": {
+          "name": "proveedor_cbc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes": {
+          "name": "mes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_facturado": {
+          "name": "total_facturado",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_pagado": {
+          "name": "total_pagado",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "saldo": {
+          "name": "saldo",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_ultimo_pago": {
+          "name": "fecha_ultimo_pago",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sync_run_id": {
+          "name": "sync_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "alq_alquileres_local_mes_idx": {
+          "name": "alq_alquileres_local_mes_idx",
+          "columns": [
+            {
+              "expression": "local",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "alq_alquileres_mensuales_sync_run_id_alq_sync_runs_id_fk": {
+          "name": "alq_alquileres_mensuales_sync_run_id_alq_sync_runs_id_fk",
+          "tableFrom": "alq_alquileres_mensuales",
+          "tableTo": "alq_sync_runs",
+          "columnsFrom": [
+            "sync_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_canon_vigente_config": {
+      "name": "alq_canon_vigente_config",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "local": {
+          "name": "local",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dia_pago_desde": {
+          "name": "dia_pago_desde",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "dia_pago_hasta": {
+          "name": "dia_pago_hasta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "proximo_ajuste": {
+          "name": "proximo_ajuste",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "indice_ajuste": {
+          "name": "indice_ajuste",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preaviso_prorroga_dias": {
+          "name": "preaviso_prorroga_dias",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 30
+        },
+        "actualizado_en": {
+          "name": "actualizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "alq_canon_vigente_config_local_unique": {
+          "name": "alq_canon_vigente_config_local_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "local"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_contratos": {
+      "name": "alq_contratos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "local_id": {
+          "name": "local_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contrato_id_excel": {
+          "name": "contrato_id_excel",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "alq_estado_contrato",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "domicilio": {
+          "name": "domicilio",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "partes": {
+          "name": "partes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fecha_contrato": {
+          "name": "fecha_contrato",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vencimiento": {
+          "name": "vencimiento",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plazo": {
+          "name": "plazo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valor_moneda": {
+          "name": "valor_moneda",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actualizacion": {
+          "name": "actualizacion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prorroga": {
+          "name": "prorroga",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "voluntad": {
+          "name": "voluntad",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "renegociacion": {
+          "name": "renegociacion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actualizado_en": {
+          "name": "actualizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "alq_contratos_local_id_excel_idx": {
+          "name": "alq_contratos_local_id_excel_idx",
+          "columns": [
+            {
+              "expression": "local_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "contrato_id_excel",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "alq_contratos_local_id_alq_locales_id_fk": {
+          "name": "alq_contratos_local_id_alq_locales_id_fk",
+          "tableFrom": "alq_contratos",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_documentos": {
+      "name": "alq_documentos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "local_id": {
+          "name": "local_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "web_url": {
+          "name": "web_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sharepoint_path": {
+          "name": "sharepoint_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drive_item_id": {
+          "name": "drive_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tamanio_bytes": {
+          "name": "tamanio_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "modificado_en": {
+          "name": "modificado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alq_documentos_local_id_alq_locales_id_fk": {
+          "name": "alq_documentos_local_id_alq_locales_id_fk",
+          "tableFrom": "alq_documentos",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_facturas": {
+      "name": "alq_facturas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "alquiler_mensual_id": {
+          "name": "alquiler_mensual_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha": {
+          "name": "fecha",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "razon_social": {
+          "name": "razon_social",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cuit": {
+          "name": "cuit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monto": {
+          "name": "monto",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo_comprobante": {
+          "name": "tipo_comprobante",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alq_facturas_alquiler_mensual_id_alq_alquileres_mensuales_id_fk": {
+          "name": "alq_facturas_alquiler_mensual_id_alq_alquileres_mensuales_id_fk",
+          "tableFrom": "alq_facturas",
+          "tableTo": "alq_alquileres_mensuales",
+          "columnsFrom": [
+            "alquiler_mensual_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_locales": {
+      "name": "alq_locales",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "alq_locales_nombre_unique": {
+          "name": "alq_locales_nombre_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "nombre"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_locales_mapping": {
+      "name": "alq_locales_mapping",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proveedor_cbc": {
+          "name": "proveedor_cbc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_canonico": {
+          "name": "local_canonico",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activo": {
+          "name": "activo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "alq_locales_mapping_proveedor_cbc_unique": {
+          "name": "alq_locales_mapping_proveedor_cbc_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "proveedor_cbc"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_pagos": {
+      "name": "alq_pagos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "alquiler_mensual_id": {
+          "name": "alquiler_mensual_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha": {
+          "name": "fecha",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monto": {
+          "name": "monto",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "medio": {
+          "name": "medio",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nro_cheque": {
+          "name": "nro_cheque",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alq_pagos_alquiler_mensual_id_alq_alquileres_mensuales_id_fk": {
+          "name": "alq_pagos_alquiler_mensual_id_alq_alquileres_mensuales_id_fk",
+          "tableFrom": "alq_pagos",
+          "tableTo": "alq_alquileres_mensuales",
+          "columnsFrom": [
+            "alquiler_mensual_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alq_sync_runs": {
+      "name": "alq_sync_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "iniciado_en": {
+          "name": "iniciado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finalizado_en": {
+          "name": "finalizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "alq_estado_sync",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_curso'"
+        },
+        "cbcs_procesados": {
+          "name": "cbcs_procesados",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cbcs_fallidos": {
+          "name": "cbcs_fallidos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "errores_json": {
+          "name": "errores_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hashes_json": {
+          "name": "hashes_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.alquileres_efectivo": {
+      "name": "alquileres_efectivo",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "caja_id": {
+          "name": "caja_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_titular": {
+          "name": "cod_titular",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 3
+        },
+        "palabras_clave": {
+          "name": "palabras_clave",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activo": {
+          "name": "activo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "alquileres_efectivo_caja_nombre_idx": {
+          "name": "alquileres_efectivo_caja_nombre_idx",
+          "columns": [
+            {
+              "expression": "caja_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "nombre",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "alquileres_efectivo_caja_id_cajas_id_fk": {
+          "name": "alquileres_efectivo_caja_id_cajas_id_fk",
+          "tableFrom": "alquileres_efectivo",
+          "tableTo": "cajas",
+          "columnsFrom": [
+            "caja_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cajas": {
+      "name": "cajas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "tipo_caja",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archivo_origen": {
+          "name": "archivo_origen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "cajas_nombre_archivo_idx": {
+          "name": "cajas_nombre_archivo_idx",
+          "columns": [
+            {
+              "expression": "nombre",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "archivo_origen",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.conceptos_esperados": {
+      "name": "conceptos_esperados",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "caja_id": {
+          "name": "caja_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_titular": {
+          "name": "cod_titular",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cod_cuenta": {
+          "name": "cod_cuenta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "palabras_clave": {
+          "name": "palabras_clave",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activo": {
+          "name": "activo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "conceptos_esperados_caja_id_cajas_id_fk": {
+          "name": "conceptos_esperados_caja_id_cajas_id_fk",
+          "tableFrom": "conceptos_esperados",
+          "tableTo": "cajas",
+          "columnsFrom": [
+            "caja_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.consistencia_saldos": {
+      "name": "consistencia_saldos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "caja_id": {
+          "name": "caja_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "saldo_calculado_ars": {
+          "name": "saldo_calculado_ars",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "saldo_excel_ars": {
+          "name": "saldo_excel_ars",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diferencia_ars": {
+          "name": "diferencia_ars",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saldo_calculado_usd": {
+          "name": "saldo_calculado_usd",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "saldo_excel_usd": {
+          "name": "saldo_excel_usd",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diferencia_usd": {
+          "name": "diferencia_usd",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fila_totales_encontrada": {
+          "name": "fila_totales_encontrada",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "verificado_en": {
+          "name": "verificado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "consistencia_saldos_caja_idx": {
+          "name": "consistencia_saldos_caja_idx",
+          "columns": [
+            {
+              "expression": "caja_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "consistencia_saldos_caja_id_cajas_id_fk": {
+          "name": "consistencia_saldos_caja_id_cajas_id_fk",
+          "tableFrom": "consistencia_saldos",
+          "tableTo": "cajas",
+          "columnsFrom": [
+            "caja_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_comparaciones_restaurantes_revisadas": {
+      "name": "cp_comparaciones_restaurantes_revisadas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "producto_id": {
+          "name": "producto_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_a_id": {
+          "name": "local_a_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_b_id": {
+          "name": "local_b_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_mas_barato_id": {
+          "name": "local_mas_barato_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "precio_minimo": {
+          "name": "precio_minimo",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_mas_barato": {
+          "name": "fecha_mas_barato",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "factura_id_mas_barato": {
+          "name": "factura_id_mas_barato",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_mas_caro_id": {
+          "name": "local_mas_caro_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "precio_maximo": {
+          "name": "precio_maximo",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_mas_caro": {
+          "name": "fecha_mas_caro",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "factura_id_mas_caro": {
+          "name": "factura_id_mas_caro",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "porcentaje_diferencia": {
+          "name": "porcentaje_diferencia",
+          "type": "numeric(6, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comentario": {
+          "name": "comentario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_comparaciones_revisadas_par_idx": {
+          "name": "cp_comparaciones_revisadas_par_idx",
+          "columns": [
+            {
+              "expression": "producto_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "local_a_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "local_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cp_comparaciones_restaurantes_revisadas_producto_id_cp_productos_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_producto_id_cp_productos_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "cp_productos",
+          "columnsFrom": [
+            "producto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "cp_comparaciones_restaurantes_revisadas_local_a_id_alq_locales_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_local_a_id_alq_locales_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_a_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cp_comparaciones_restaurantes_revisadas_local_b_id_alq_locales_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_local_b_id_alq_locales_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_b_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cp_comparaciones_restaurantes_revisadas_local_mas_barato_id_alq_locales_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_local_mas_barato_id_alq_locales_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_mas_barato_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cp_comparaciones_restaurantes_revisadas_factura_id_mas_barato_cp_facturas_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_factura_id_mas_barato_cp_facturas_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "cp_facturas",
+          "columnsFrom": [
+            "factura_id_mas_barato"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cp_comparaciones_restaurantes_revisadas_local_mas_caro_id_alq_locales_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_local_mas_caro_id_alq_locales_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_mas_caro_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cp_comparaciones_restaurantes_revisadas_factura_id_mas_caro_cp_facturas_id_fk": {
+          "name": "cp_comparaciones_restaurantes_revisadas_factura_id_mas_caro_cp_facturas_id_fk",
+          "tableFrom": "cp_comparaciones_restaurantes_revisadas",
+          "tableTo": "cp_facturas",
+          "columnsFrom": [
+            "factura_id_mas_caro"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_detalle_facturas": {
+      "name": "cp_detalle_facturas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "factura_id": {
+          "name": "factura_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "producto_id": {
+          "name": "producto_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantidad": {
+          "name": "cantidad",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "precio_unitario": {
+          "name": "precio_unitario",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "descuento": {
+          "name": "descuento",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subtotal": {
+          "name": "subtotal",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subtotal_impreso": {
+          "name": "subtotal_impreso",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iva_porcentaje": {
+          "name": "iva_porcentaje",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "precio_origen": {
+          "name": "precio_origen",
+          "type": "cp_precio_origen",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'factura'"
+        },
+        "verificado_manual": {
+          "name": "verificado_manual",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "cp_detalle_facturas_factura_id_cp_facturas_id_fk": {
+          "name": "cp_detalle_facturas_factura_id_cp_facturas_id_fk",
+          "tableFrom": "cp_detalle_facturas",
+          "tableTo": "cp_facturas",
+          "columnsFrom": [
+            "factura_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "cp_detalle_facturas_producto_id_cp_productos_id_fk": {
+          "name": "cp_detalle_facturas_producto_id_cp_productos_id_fk",
+          "tableFrom": "cp_detalle_facturas",
+          "tableTo": "cp_productos",
+          "columnsFrom": [
+            "producto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_duplicados_descartados": {
+      "name": "cp_duplicados_descartados",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "cp_tipo_duplicado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ids": {
+          "name": "ids",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comentario": {
+          "name": "comentario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_duplicados_descartados_tipo_ids_idx": {
+          "name": "cp_duplicados_descartados_tipo_ids_idx",
+          "columns": [
+            {
+              "expression": "tipo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_facturas": {
+      "name": "cp_facturas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proveedor_id": {
+          "name": "proveedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_id": {
+          "name": "local_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fecha_emision": {
+          "name": "fecha_emision",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_carga": {
+          "name": "fecha_carga",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "monto_total": {
+          "name": "monto_total",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archivo_url": {
+          "name": "archivo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "cp_estado_factura",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pendiente_revision'"
+        },
+        "numero_factura": {
+          "name": "numero_factura",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "cp_facturas_proveedor_id_cp_proveedores_id_fk": {
+          "name": "cp_facturas_proveedor_id_cp_proveedores_id_fk",
+          "tableFrom": "cp_facturas",
+          "tableTo": "cp_proveedores",
+          "columnsFrom": [
+            "proveedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cp_facturas_local_id_alq_locales_id_fk": {
+          "name": "cp_facturas_local_id_alq_locales_id_fk",
+          "tableFrom": "cp_facturas",
+          "tableTo": "alq_locales",
+          "columnsFrom": [
+            "local_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_facturas_repetidas_revisadas": {
+      "name": "cp_facturas_repetidas_revisadas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proveedor_id": {
+          "name": "proveedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "factura_ids": {
+          "name": "factura_ids",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "estado_duplicado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comentario": {
+          "name": "comentario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_facturas_repetidas_ids_idx": {
+          "name": "cp_facturas_repetidas_ids_idx",
+          "columns": [
+            {
+              "expression": "factura_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cp_facturas_repetidas_revisadas_proveedor_id_cp_proveedores_id_fk": {
+          "name": "cp_facturas_repetidas_revisadas_proveedor_id_cp_proveedores_id_fk",
+          "tableFrom": "cp_facturas_repetidas_revisadas",
+          "tableTo": "cp_proveedores",
+          "columnsFrom": [
+            "proveedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_listas_precios_historial": {
+      "name": "cp_listas_precios_historial",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "importacion_id": {
+          "name": "importacion_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "codigo_proveedor": {
+          "name": "codigo_proveedor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "descripcion": {
+          "name": "descripcion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "categoria": {
+          "name": "categoria",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "precio_lista": {
+          "name": "precio_lista",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "precio_con_bonificacion": {
+          "name": "precio_con_bonificacion",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "producto_id": {
+          "name": "producto_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "cp_listas_precios_historial_importacion_id_cp_listas_precios_importaciones_id_fk": {
+          "name": "cp_listas_precios_historial_importacion_id_cp_listas_precios_importaciones_id_fk",
+          "tableFrom": "cp_listas_precios_historial",
+          "tableTo": "cp_listas_precios_importaciones",
+          "columnsFrom": [
+            "importacion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "cp_listas_precios_historial_producto_id_cp_productos_id_fk": {
+          "name": "cp_listas_precios_historial_producto_id_cp_productos_id_fk",
+          "tableFrom": "cp_listas_precios_historial",
+          "tableTo": "cp_productos",
+          "columnsFrom": [
+            "producto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_listas_precios_importaciones": {
+      "name": "cp_listas_precios_importaciones",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proveedor_id": {
+          "name": "proveedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archivo_origen": {
+          "name": "archivo_origen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "importado_en": {
+          "name": "importado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "cp_listas_precios_importaciones_proveedor_id_cp_proveedores_id_fk": {
+          "name": "cp_listas_precios_importaciones_proveedor_id_cp_proveedores_id_fk",
+          "tableFrom": "cp_listas_precios_importaciones",
+          "tableTo": "cp_proveedores",
+          "columnsFrom": [
+            "proveedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_listas_precios_proveedor": {
+      "name": "cp_listas_precios_proveedor",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "proveedor_id": {
+          "name": "proveedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "codigo_proveedor": {
+          "name": "codigo_proveedor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "descripcion": {
+          "name": "descripcion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "presentacion": {
+          "name": "presentacion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "categoria": {
+          "name": "categoria",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "precio_lista": {
+          "name": "precio_lista",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "precio_con_bonificacion": {
+          "name": "precio_con_bonificacion",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "producto_id": {
+          "name": "producto_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archivo_origen": {
+          "name": "archivo_origen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "importado_en": {
+          "name": "importado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_listas_precios_proveedor_codigo_idx": {
+          "name": "cp_listas_precios_proveedor_codigo_idx",
+          "columns": [
+            {
+              "expression": "proveedor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "codigo_proveedor",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cp_listas_precios_proveedor_proveedor_id_cp_proveedores_id_fk": {
+          "name": "cp_listas_precios_proveedor_proveedor_id_cp_proveedores_id_fk",
+          "tableFrom": "cp_listas_precios_proveedor",
+          "tableTo": "cp_proveedores",
+          "columnsFrom": [
+            "proveedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "cp_listas_precios_proveedor_producto_id_cp_productos_id_fk": {
+          "name": "cp_listas_precios_proveedor_producto_id_cp_productos_id_fk",
+          "tableFrom": "cp_listas_precios_proveedor",
+          "tableTo": "cp_productos",
+          "columnsFrom": [
+            "producto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_pares_precios_proveedores": {
+      "name": "cp_pares_precios_proveedores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "lista_a_id": {
+          "name": "lista_a_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lista_b_id": {
+          "name": "lista_b_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirmado": {
+          "name": "confirmado",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "motivo": {
+          "name": "motivo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "distinta_marca": {
+          "name": "distinta_marca",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_pares_precios_a_b_idx": {
+          "name": "cp_pares_precios_a_b_idx",
+          "columns": [
+            {
+              "expression": "lista_a_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lista_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cp_pares_precios_proveedores_lista_a_id_cp_listas_precios_proveedor_id_fk": {
+          "name": "cp_pares_precios_proveedores_lista_a_id_cp_listas_precios_proveedor_id_fk",
+          "tableFrom": "cp_pares_precios_proveedores",
+          "tableTo": "cp_listas_precios_proveedor",
+          "columnsFrom": [
+            "lista_a_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "cp_pares_precios_proveedores_lista_b_id_cp_listas_precios_proveedor_id_fk": {
+          "name": "cp_pares_precios_proveedores_lista_b_id_cp_listas_precios_proveedor_id_fk",
+          "tableFrom": "cp_pares_precios_proveedores",
+          "tableTo": "cp_listas_precios_proveedor",
+          "columnsFrom": [
+            "lista_b_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_productos": {
+      "name": "cp_productos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proveedor_id": {
+          "name": "proveedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unidad_medida": {
+          "name": "unidad_medida",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'u'"
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_productos_nombre_proveedor_idx": {
+          "name": "cp_productos_nombre_proveedor_idx",
+          "columns": [
+            {
+              "expression": "nombre",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "proveedor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cp_productos_proveedor_id_cp_proveedores_id_fk": {
+          "name": "cp_productos_proveedor_id_cp_proveedores_id_fk",
+          "tableFrom": "cp_productos",
+          "tableTo": "cp_proveedores",
+          "columnsFrom": [
+            "proveedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_proveedores": {
+      "name": "cp_proveedores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "categoria": {
+          "name": "categoria",
+          "type": "cp_categoria_insumo",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cuit": {
+          "name": "cuit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_proveedores_cuit_idx": {
+          "name": "cp_proveedores_cuit_idx",
+          "columns": [
+            {
+              "expression": "cuit",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cp_sustitutos_producto": {
+      "name": "cp_sustitutos_producto",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "lista_a_id": {
+          "name": "lista_a_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lista_b_id": {
+          "name": "lista_b_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "motivo": {
+          "name": "motivo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cp_sustitutos_producto_a_b_idx": {
+          "name": "cp_sustitutos_producto_a_b_idx",
+          "columns": [
+            {
+              "expression": "lista_a_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lista_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cp_sustitutos_producto_lista_a_id_cp_listas_precios_proveedor_id_fk": {
+          "name": "cp_sustitutos_producto_lista_a_id_cp_listas_precios_proveedor_id_fk",
+          "tableFrom": "cp_sustitutos_producto",
+          "tableTo": "cp_listas_precios_proveedor",
+          "columnsFrom": [
+            "lista_a_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "cp_sustitutos_producto_lista_b_id_cp_listas_precios_proveedor_id_fk": {
+          "name": "cp_sustitutos_producto_lista_b_id_cp_listas_precios_proveedor_id_fk",
+          "tableFrom": "cp_sustitutos_producto",
+          "tableTo": "cp_listas_precios_proveedor",
+          "columnsFrom": [
+            "lista_b_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.duplicados_revisados": {
+      "name": "duplicados_revisados",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "caja_id": {
+          "name": "caja_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha": {
+          "name": "fecha",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_titular": {
+          "name": "cod_titular",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "estado_duplicado",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comentario": {
+          "name": "comentario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "duplicados_caso_idx": {
+          "name": "duplicados_caso_idx",
+          "columns": [
+            {
+              "expression": "caja_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fecha",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cod_titular",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "duplicados_revisados_caja_id_cajas_id_fk": {
+          "name": "duplicados_revisados_caja_id_cajas_id_fk",
+          "tableFrom": "duplicados_revisados",
+          "tableTo": "cajas",
+          "columnsFrom": [
+            "caja_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.graph_auth_tokens": {
+      "name": "graph_auth_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "cuenta": {
+          "name": "cuenta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actualizado_en": {
+          "name": "actualizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "graph_auth_tokens_cuenta_unique": {
+          "name": "graph_auth_tokens_cuenta_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "cuenta"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.justificaciones_auditoria": {
+      "name": "justificaciones_auditoria",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "movimiento_id": {
+          "name": "movimiento_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usuario_email": {
+          "name": "usuario_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comentario": {
+          "name": "comentario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creado_en": {
+          "name": "creado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actualizado_en": {
+          "name": "actualizado_en",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "justificaciones_movimiento_idx": {
+          "name": "justificaciones_movimiento_idx",
+          "columns": [
+            {
+              "expression": "movimiento_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "justificaciones_auditoria_movimiento_id_movimientos_caja_id_fk": {
+          "name": "justificaciones_auditoria_movimiento_id_movimientos_caja_id_fk",
+          "tableFrom": "justificaciones_auditoria",
+          "tableTo": "movimientos_caja",
+          "columnsFrom": [
+            "movimiento_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.movimientos_caja": {
+      "name": "movimientos_caja",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "caja_id": {
+          "name": "caja_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archivo_origen": {
+          "name": "archivo_origen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fila_excel": {
+          "name": "fila_excel",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha": {
+          "name": "fecha",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod_titular": {
+          "name": "cod_titular",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "titular_resuelto": {
+          "name": "titular_resuelto",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cod_cuenta": {
+          "name": "cod_cuenta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cuenta_resuelta": {
+          "name": "cuenta_resuelta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "concepto_manual": {
+          "name": "concepto_manual",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "descripcion_final": {
+          "name": "descripcion_final",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monto_ars": {
+          "name": "monto_ars",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monto_usd": {
+          "name": "monto_usd",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tipo_movimiento": {
+          "name": "tipo_movimiento",
+          "type": "tipo_movimiento",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "saldo_acumulado_ars": {
+          "name": "saldo_acumulado_ars",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saldo_acumulado_usd": {
+          "name": "saldo_acumulado_usd",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "formula_original": {
+          "name": "formula_original",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requiere_justificacion": {
+          "name": "requiere_justificacion",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "es_saldo_inicial": {
+          "name": "es_saldo_inicial",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "anomalia": {
+          "name": "anomalia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "color_fondo": {
+          "name": "color_fondo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "movimientos_natural_key_idx": {
+          "name": "movimientos_natural_key_idx",
+          "columns": [
+            {
+              "expression": "archivo_origen",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "caja_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fila_excel",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "movimientos_caja_caja_id_cajas_id_fk": {
+          "name": "movimientos_caja_caja_id_cajas_id_fk",
+          "tableFrom": "movimientos_caja",
+          "tableTo": "cajas",
+          "columnsFrom": [
+            "caja_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.plan_cuentas": {
+      "name": "plan_cuentas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "cod": {
+          "name": "cod",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grupo": {
+          "name": "grupo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rubro": {
+          "name": "rubro",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subrubro": {
+          "name": "subrubro",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cuenta": {
+          "name": "cuenta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "plan_cuentas_cod_idx": {
+          "name": "plan_cuentas_cod_idx",
+          "columns": [
+            {
+              "expression": "cod",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.registro_auditoria": {
+      "name": "registro_auditoria",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "archivo": {
+          "name": "archivo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hash_archivo": {
+          "name": "hash_archivo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_modificacion_sharepoint": {
+          "name": "fecha_modificacion_sharepoint",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "modificado_por_sharepoint": {
+          "name": "modificado_por_sharepoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hoja": {
+          "name": "hoja",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fila_excel": {
+          "name": "fila_excel",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tipo_anomalia": {
+          "name": "tipo_anomalia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accion_tomada": {
+          "name": "accion_tomada",
+          "type": "accion_carga",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fecha_carga": {
+          "name": "fecha_carga",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.titulares": {
+      "name": "titulares",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "archivo_origen": {
+          "name": "archivo_origen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cod": {
+          "name": "cod",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grupo1": {
+          "name": "grupo1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grupo2": {
+          "name": "grupo2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grupo3": {
+          "name": "grupo3",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "razon_social": {
+          "name": "razon_social",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cuit": {
+          "name": "cuit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telefono": {
+          "name": "telefono",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "titulares_archivo_cod_idx": {
+          "name": "titulares_archivo_cod_idx",
+          "columns": [
+            {
+              "expression": "archivo_origen",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cod",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios": {
+      "name": "usuarios",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rol": {
+          "name": "rol",
+          "type": "rol_usuario",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'viewer'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "usuarios_email_unique": {
+          "name": "usuarios_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.accion_carga": {
+      "name": "accion_carga",
+      "schema": "public",
+      "values": [
+        "importado",
+        "descartado",
+        "marcado_revision"
+      ]
+    },
+    "public.alq_estado_contrato": {
+      "name": "alq_estado_contrato",
+      "schema": "public",
+      "values": [
+        "vigente",
+        "historico",
+        "adenda",
+        "pendiente"
+      ]
+    },
+    "public.alq_estado_sync": {
+      "name": "alq_estado_sync",
+      "schema": "public",
+      "values": [
+        "en_curso",
+        "completado",
+        "con_errores"
+      ]
+    },
+    "public.alq_prioridad_alerta": {
+      "name": "alq_prioridad_alerta",
+      "schema": "public",
+      "values": [
+        "critica",
+        "urgente",
+        "proxima",
+        "informativa"
+      ]
+    },
+    "public.alq_tipo_alerta": {
+      "name": "alq_tipo_alerta",
+      "schema": "public",
+      "values": [
+        "vencimiento_contrato",
+        "decision_prorroga",
+        "pago_pendiente",
+        "pago_vencido",
+        "ajuste_proximo",
+        "ajuste_hoy",
+        "proveedor_no_mapeado"
+      ]
+    },
+    "public.cp_categoria_insumo": {
+      "name": "cp_categoria_insumo",
+      "schema": "public",
+      "values": [
+        "CARNE",
+        "ALMACEN",
+        "VERDULERIA",
+        "BEBIBLES",
+        "DESCARTABLES"
+      ]
+    },
+    "public.cp_estado_factura": {
+      "name": "cp_estado_factura",
+      "schema": "public",
+      "values": [
+        "pendiente_revision",
+        "confirmada"
+      ]
+    },
+    "public.cp_precio_origen": {
+      "name": "cp_precio_origen",
+      "schema": "public",
+      "values": [
+        "factura",
+        "referencia_5cynar",
+        "manual"
+      ]
+    },
+    "public.cp_tipo_duplicado": {
+      "name": "cp_tipo_duplicado",
+      "schema": "public",
+      "values": [
+        "proveedor",
+        "producto"
+      ]
+    },
+    "public.estado_duplicado": {
+      "name": "estado_duplicado",
+      "schema": "public",
+      "values": [
+        "confirmado",
+        "justificado"
+      ]
+    },
+    "public.rol_usuario": {
+      "name": "rol_usuario",
+      "schema": "public",
+      "values": [
+        "admin",
+        "viewer"
+      ]
+    },
+    "public.tipo_caja": {
+      "name": "tipo_caja",
+      "schema": "public",
+      "values": [
+        "operativa",
+        "obra"
+      ]
+    },
+    "public.tipo_movimiento": {
+      "name": "tipo_movimiento",
+      "schema": "public",
+      "values": [
+        "ingreso",
+        "egreso"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

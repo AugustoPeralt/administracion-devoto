@@ -1,6 +1,10 @@
 "use client";
 
-import { corregirMontoFactura, justificarFacturasPosibleDuplicado } from "@/app/control-precios/actions";
+import {
+  corregirMontoFactura,
+  eliminarFacturaDuplicada,
+  justificarFacturasPosibleDuplicado,
+} from "@/app/control-precios/actions";
 import { formatoMoneda, parseNumeroDecimal } from "@/lib/formato";
 import type { GrupoFacturaPosibleDuplicado } from "@/lib/control-precios/consultas";
 import Link from "next/link";
@@ -24,6 +28,7 @@ export function FacturasNumeroRepetidoPanel({ grupos }: { grupos: GrupoFacturaPo
   const router = useRouter();
   const [valores, setValores] = useState<Record<number, string>>({});
   const [comentarios, setComentarios] = useState<Record<string, string>>({});
+  const [comentariosBorrado, setComentariosBorrado] = useState<Record<number, string>>({});
   const [procesando, setProcesando] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +44,21 @@ export function FacturasNumeroRepetidoPanel({ grupos }: { grupos: GrupoFacturaPo
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al corregir el monto.");
+    } finally {
+      setProcesando(null);
+    }
+  }
+
+  async function eliminar(g: GrupoFacturaPosibleDuplicado, facturaId: number) {
+    const comentario = comentariosBorrado[facturaId] ?? "";
+    if (!comentario.trim()) return;
+    setError(null);
+    setProcesando(`del${facturaId}`);
+    try {
+      await eliminarFacturaDuplicada(facturaId, g.proveedorId, g.facturaIds, comentario);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al eliminar la factura.");
     } finally {
       setProcesando(null);
     }
@@ -122,6 +142,22 @@ export function FacturasNumeroRepetidoPanel({ grupos }: { grupos: GrupoFacturaPo
                       className="rounded-md bg-slate-950 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Corregir
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="Motivo del borrado (obligatorio)"
+                      value={comentariosBorrado[f.id] ?? ""}
+                      onChange={(e) => setComentariosBorrado((prev) => ({ ...prev, [f.id]: e.target.value }))}
+                      className="w-52 rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-950"
+                    />
+                    <button
+                      type="button"
+                      disabled={!comentariosBorrado[f.id]?.trim() || procesando === `del${f.id}`}
+                      onClick={() => void eliminar(g, f.id)}
+                      title="Borra esta factura y sus ítems de la base — es un duplicado real, no una corrección"
+                      className="rounded-md border border-rose-300 bg-white px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {procesando === `del${f.id}` ? "Eliminando..." : "Eliminar factura"}
                     </button>
                   </div>
                 ))}

@@ -8,6 +8,7 @@ import { formatoMoneda } from "@/lib/formato";
 import {
   agruparPosiblesDuplicados,
   agruparPosiblesProductosDuplicados,
+  obtenerClavesDuplicadosDescartados,
   obtenerFacturasConFechaSospechosa,
   obtenerFacturasPosibleDuplicado,
   obtenerItemsPendientesDePrecio,
@@ -17,17 +18,31 @@ import {
 } from "@/lib/control-precios/consultas";
 
 export default async function ProveedoresPage() {
-  const [proveedores, productos, facturasSospechosas, facturasDuplicadas, itemsPendientes, itemsPrecioCero] =
-    await Promise.all([
-      obtenerProveedoresConTotales(),
-      obtenerProductosConTotales(),
-      obtenerFacturasConFechaSospechosa(),
-      obtenerFacturasPosibleDuplicado(),
-      obtenerItemsPendientesDePrecio(),
-      obtenerItemsPrecioCero(),
-    ]);
-  const gruposProveedores = agruparPosiblesDuplicados(proveedores);
-  const gruposProductos = agruparPosiblesProductosDuplicados(productos);
+  const [
+    proveedores,
+    productos,
+    facturasSospechosas,
+    facturasDuplicadas,
+    itemsPendientes,
+    itemsPrecioCero,
+    proveedoresDescartados,
+    productosDescartados,
+  ] = await Promise.all([
+    obtenerProveedoresConTotales(),
+    obtenerProductosConTotales(),
+    obtenerFacturasConFechaSospechosa(),
+    obtenerFacturasPosibleDuplicado(),
+    obtenerItemsPendientesDePrecio(),
+    obtenerItemsPrecioCero(),
+    obtenerClavesDuplicadosDescartados("proveedor"),
+    obtenerClavesDuplicadosDescartados("producto"),
+  ]);
+  const gruposProveedores = agruparPosiblesDuplicados(proveedores).filter(
+    (g) => !proveedoresDescartados.has(g.map((p) => p.id).sort((a, b) => a - b).join(","))
+  );
+  const gruposProductos = agruparPosiblesProductosDuplicados(productos).filter(
+    (g) => !productosDescartados.has(g.map((p) => p.id).sort((a, b) => a - b).join(","))
+  );
 
   const sinAlertas =
     gruposProveedores.length === 0 &&
