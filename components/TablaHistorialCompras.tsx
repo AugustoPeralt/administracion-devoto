@@ -45,7 +45,7 @@ export function TablaHistorialCompras({ filas }: { filas: FilaHistorialCompras[]
 
   if (filas.length === 0) {
     return (
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
         <p className="px-3 py-6 text-center text-sm text-slate-400">
           No hay compras registradas en este período con los filtros elegidos.
         </p>
@@ -89,7 +89,7 @@ export function TablaHistorialCompras({ filas }: { filas: FilaHistorialCompras[]
       </div>
 
       {terminoBusqueda && gruposFiltrados.length === 0 && (
-        <p className="rounded-lg border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-400 shadow-sm">
+        <p className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-400 shadow-xs">
           Ningún producto de este período coincide con &quot;{busqueda.trim()}&quot;.
         </p>
       )}
@@ -100,21 +100,21 @@ export function TablaHistorialCompras({ filas }: { filas: FilaHistorialCompras[]
         const sinVerificarGrupo = grupo.items.reduce((acc, f) => acc + f.gastoSinVerificar, 0);
 
         return (
-          <div key={grupo.proveedorId} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div key={grupo.proveedorId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
             <button
               type="button"
               onClick={() => alternarGrupo(grupo.proveedorId)}
-              className="flex w-full items-center gap-3 bg-slate-50 px-3 py-2.5 text-left hover:bg-slate-100"
+              className="flex w-full items-center gap-3 bg-slate-50/75 px-3 py-2.5 text-left hover:bg-slate-100"
             >
               <span className="text-slate-400">{abierto ? "▾" : "▸"}</span>
               <span className="text-sm font-semibold text-slate-900">{grupo.proveedorNombre}</span>
               <span className="text-xs text-slate-500">
                 {grupo.items.length} producto{grupo.items.length === 1 ? "" : "s"}
               </span>
-              <span className="text-xs text-slate-400">{formatoMoneda(gastoGrupo)}</span>
+              <span className="font-mono text-xs text-slate-400">{formatoMoneda(gastoGrupo)}</span>
               {sinVerificarGrupo > 0 && (
                 <span
-                  className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                  className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
                   title="Suma de renglones con descuento propio cuyo subtotal calculado no coincide con el impreso en el papel (o no hay subtotal impreso para comparar) — no está incluida en el gasto de arriba."
                 >
                   +{formatoMoneda(sinVerificarGrupo)} sin verificar
@@ -125,8 +125,8 @@ export function TablaHistorialCompras({ filas }: { filas: FilaHistorialCompras[]
             {abierto && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="text-left text-slate-500">
-                    <tr className="border-t border-slate-100">
+                  <thead className="border-b border-slate-200 bg-slate-50/75 text-left text-xs font-medium text-slate-500">
+                    <tr>
                       <th className="px-3 py-2">Producto</th>
                       <th className="px-3 py-2 text-right">Cantidad comprada</th>
                       <th className="px-3 py-2 text-right">Gasto verificado</th>
@@ -169,7 +169,7 @@ function FilaProducto({
   const porcentajeDelTotal = gastoTotalGeneral > 0 ? (f.gastoVerificado / gastoTotalGeneral) * 100 : 0;
   return (
     <>
-      <tr className="border-t border-slate-100">
+      <tr className="border-t border-slate-100 hover:bg-slate-50/80">
         <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-900">{f.productoNombre}</td>
         <td className="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums text-slate-700">
           {formatoCantidad(f.cantidadTotal)} {f.unidadMedida}
@@ -203,10 +203,10 @@ function FilaProducto({
         </td>
       </tr>
       {expandido && (
-        <tr className="border-t border-slate-100 bg-slate-50">
+        <tr className="border-t border-slate-100 bg-slate-50/75">
           <td colSpan={5} className="px-3 py-2">
             <table className="w-full text-xs">
-              <thead className="text-left text-slate-400">
+              <thead className="border-b border-slate-200 text-left text-slate-400">
                 <tr>
                   <th className="px-2 py-1">Fecha</th>
                   <th className="px-2 py-1">Restaurante</th>
@@ -218,7 +218,7 @@ function FilaProducto({
               </thead>
               <tbody>
                 {f.compras.map((c, i) => (
-                  <tr key={`${c.facturaId}-${i}`} className="border-t border-slate-200">
+                  <tr key={`${c.facturaId}-${i}`} className="border-t border-slate-200 hover:bg-slate-100/80">
                     <td className="whitespace-nowrap px-2 py-1 text-slate-600">{formatoFecha(c.fechaEmision)}</td>
                     <td className="whitespace-nowrap px-2 py-1 text-slate-600">{c.localNombre ?? "Sin asignar"}</td>
                     <td className="whitespace-nowrap px-2 py-1 text-right font-mono tabular-nums text-slate-700">
@@ -233,7 +233,7 @@ function FilaProducto({
                     <td className="whitespace-nowrap px-2 py-1 text-right">
                       {c.verificado === false && (
                         <span
-                          className="mr-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700"
+                          className="mr-1.5 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700"
                           title={`Tiene descuento propio y no reconcilia contra el subtotal impreso${
                             c.subtotalImpreso !== null ? ` (${formatoMoneda(c.subtotalImpreso)})` : " (no hay subtotal impreso extraído)"
                           } — no está incluido en el gasto verificado.`}

@@ -1,5 +1,4 @@
 import { formatoMoneda } from "@/lib/formato";
-import { COLOR_GASTO_PRODUCTO } from "@/lib/control-precios/colores-graficos";
 
 function formatoCantidad(cantidad: number): string {
   return cantidad.toLocaleString("es-AR", { maximumFractionDigits: 2 });
@@ -27,24 +26,17 @@ export function GraficoTopProductos({
         return (
           <div key={`${d.productoNombre}-${i}`}>
             <div className="mb-1.5 flex items-baseline justify-between gap-4">
-              <p className="text-sm font-medium text-slate-900">
+              <p className="truncate text-sm font-medium text-slate-900">
                 <span className="mr-2 text-xs font-normal tabular-nums text-slate-400">{i + 1}</span>
                 {d.productoNombre}
               </p>
-              <span className="shrink-0 text-xs text-slate-500">
+              <span className="shrink-0 text-right text-xs text-slate-500">
                 {formatoCantidad(d.cantidad)} {d.unidadMedida}
+                <span className="ml-2 font-mono text-sm font-semibold text-slate-900">{formatoMoneda(d.gasto)}</span>
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${porcentaje}%`, backgroundColor: COLOR_GASTO_PRODUCTO }}
-                />
-              </div>
-              <span className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">
-                {formatoMoneda(d.gasto)}
-              </span>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-slate-800" style={{ width: `${porcentaje}%` }} />
             </div>
           </div>
         );

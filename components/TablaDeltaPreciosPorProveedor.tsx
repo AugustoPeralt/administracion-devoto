@@ -47,7 +47,7 @@ export function TablaDeltaPreciosPorProveedor({
 
   if (deltas.length === 0) {
     return (
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
         <p className="px-3 py-6 text-center text-sm text-slate-400">
           No hay compras registradas en este período con los filtros elegidos.
         </p>
@@ -91,7 +91,7 @@ export function TablaDeltaPreciosPorProveedor({
       </div>
 
       {terminoBusqueda && gruposFiltrados.length === 0 && (
-        <p className="rounded-lg border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-400 shadow-sm">
+        <p className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-400 shadow-xs">
           Ningún producto de este período coincide con &quot;{busqueda.trim()}&quot;.
         </p>
       )}
@@ -105,11 +105,11 @@ export function TablaDeltaPreciosPorProveedor({
         ).length;
 
         return (
-          <div key={grupo.proveedorId} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div key={grupo.proveedorId} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
             <button
               type="button"
               onClick={() => alternar(grupo.proveedorId)}
-              className="flex w-full items-center gap-3 bg-slate-50 px-3 py-2.5 text-left hover:bg-slate-100"
+              className="flex w-full items-center gap-3 bg-slate-50/75 px-3 py-2.5 text-left hover:bg-slate-100"
             >
               <span className="text-slate-400">{abierto ? "▾" : "▸"}</span>
               <span className="text-sm font-semibold text-slate-900">{grupo.proveedorNombre}</span>
@@ -117,7 +117,7 @@ export function TablaDeltaPreciosPorProveedor({
                 {grupo.items.length} producto{grupo.items.length === 1 ? "" : "s"}
               </span>
               {alertas > 0 && (
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+                <span className="rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
                   {alertas} alerta{alertas === 1 ? "" : "s"}
                 </span>
               )}
@@ -126,8 +126,8 @@ export function TablaDeltaPreciosPorProveedor({
             {abierto && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="text-left text-slate-500">
-                    <tr className="border-t border-slate-100">
+                  <thead className="border-b border-slate-200 bg-slate-50/75 text-left text-xs font-medium text-slate-500">
+                    <tr>
                       <th className="px-3 py-2">Producto</th>
                       <th className="px-3 py-2">Restaurante</th>
                       <th className="px-3 py-2">Categoría</th>
@@ -158,12 +158,12 @@ function FilaDelta({ d, umbralAlerta }: { d: FilaDeltaPrecio; umbralAlerta: numb
   const bajoAlgo = porcentaje !== null && porcentaje < 0;
 
   return (
-    <tr className={`border-t border-slate-100 ${esAlerta ? "bg-rose-50" : ""}`}>
+    <tr className={`border-t border-slate-100 hover:bg-slate-50/80 ${esAlerta ? "bg-rose-50" : ""}`}>
       <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-900">{d.productoNombre}</td>
       <td className="whitespace-nowrap px-3 py-2 text-slate-600">{d.localNombre ?? "Sin asignar"}</td>
       <td className="whitespace-nowrap px-3 py-2 text-slate-500">{d.categoria}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-right">
-        <div className="font-mono tabular-nums text-slate-500">{d.precioBase ? formatoMoneda(d.precioBase) : "—"}</div>
+      <td className="whitespace-nowrap px-3 py-2 text-right font-mono">
+        <div className="tabular-nums text-slate-500">{d.precioBase ? formatoMoneda(d.precioBase) : "—"}</div>
         {d.fechaBase && <div className="text-xs text-slate-400">{formatoFecha(d.fechaBase)}</div>}
         {d.facturaIdBase && (
           <Link href={`/control-precios/facturas/${d.facturaIdBase}`} className="text-xs text-slate-400 underline hover:text-slate-900">
@@ -171,8 +171,8 @@ function FilaDelta({ d, umbralAlerta }: { d: FilaDeltaPrecio; umbralAlerta: numb
           </Link>
         )}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right">
-        <div className="font-mono tabular-nums text-slate-900">{formatoMoneda(d.precioActual)}</div>
+      <td className="whitespace-nowrap px-3 py-2 text-right font-mono">
+        <div className="tabular-nums text-slate-900">{formatoMoneda(d.precioActual)}</div>
         <div className="text-xs text-slate-400">{formatoFecha(d.fechaActual)}</div>
         <Link
           href={`/control-precios/facturas/${d.facturaIdActual}`}
@@ -182,7 +182,7 @@ function FilaDelta({ d, umbralAlerta }: { d: FilaDeltaPrecio; umbralAlerta: numb
         </Link>
       </td>
       <td
-        className={`whitespace-nowrap px-3 py-2 text-right font-medium ${
+        className={`whitespace-nowrap px-3 py-2 text-right font-mono font-medium ${
           subioAlgo ? "text-rose-600" : bajoAlgo ? "text-emerald-600" : "text-slate-400"
         }`}
       >
