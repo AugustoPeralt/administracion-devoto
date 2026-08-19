@@ -367,6 +367,26 @@ function agruparAfipPorCuit(comprobantes: ComprobanteAfip[]) {
   return map;
 }
 
+/** Entre varias facturas cargadas con el MISMO número de comprobante normalizado
+ * (comprobante multipágina: una fila por página, todas repiten el número —
+ * ver comentario de monto_total en cp_facturas, db/schema.ts) elige cuál es "la"
+ * que corresponde al comprobante de AFIP: prioriza la que matchea el importe
+ * exacto: si ninguna matchea, prioriza una con monto real por sobre una en
+ * $0/null (la página sin el total impreso). Sin esto, con dos filas de la
+ * misma factura, findIndex() podía quedarse con la fila del monto $0 (la
+ * primera página, sin total) y dejar la fila con el importe real "huérfana" —
+ * bug real encontrado 2026-08-19: 3 facturas de El Criollo en Mecha, todas
+ * verificadas como existentes en AFIP, aparecían como "cargadas pero no en
+ * AFIP" por esto exacto. */
+function elegirCandidatoPorNumero(candidatos: { f: FacturaCargada; idx: number }[], montoEsperado: number): number {
+  if (candidatos.length === 1) return candidatos[0].idx;
+  const porMonto = candidatos.find(({ f }) => f.montoTotal != null && Math.abs(f.montoTotal - montoEsperado) <= TOLERANCIA_MONTO);
+  if (porMonto) return porMonto.idx;
+  const conMontoReal = candidatos.find(({ f }) => f.montoTotal != null && f.montoTotal !== 0);
+  if (conMontoReal) return conMontoReal.idx;
+  return candidatos[0].idx;
+}
+
 /** Empareja, para UN proveedor, los comprobantes de AFIP contra los cargados en
  * dos pasadas: primero por número de comprobante (exacto, tolerante a formato);
  * lo que no matcheó así pero tiene fecha e importe EXACTOS contra una factura
@@ -382,8 +402,11 @@ function emparejarComprobantes(afip: ComprobanteAfip[], cargados: FacturaCargada
   for (let i = restanteAfip.length - 1; i >= 0; i--) {
     const c = restanteAfip[i];
     const clave = clavePuntoVentaNumero(c.puntoVenta, c.numero);
-    const idx = restanteCargado.findIndex((f) => f.numeroFactura && normalizarNumeroComprobante(f.numeroFactura) === clave);
-    if (idx >= 0) {
+    const candidatos = restanteCargado
+      .map((f, idx) => ({ f, idx }))
+      .filter(({ f }) => f.numeroFactura && normalizarNumeroComprobante(f.numeroFactura) === clave);
+    if (candidatos.length > 0) {
+      const idx = elegirCandidatoPorNumero(candidatos, c.importeTotal);
       restanteCargado.splice(idx, 1);
       restanteAfip.splice(i, 1);
     }
@@ -401,5 +424,12 @@ function emparejarComprobantes(afip: ComprobanteAfip[], cargados: FacturaCargada
     }
   }
 
-  return { faltantes: restanteAfip, identificadasPorMontoYFecha, cargadosSinMatch: restanteCargado };
+  // Las páginas de un comprobante multipágina que no imprimen el total (monto_total
+  // null/0 a propósito, ver cp_facturas en db/schema.ts) nunca van a "matchear" un
+  // comprobante de AFIP por monto, y ya se contactó su página con el total real
+  // arriba — no son una discrepancia real, son ruido estructural de cómo se
+  // guardan. Se descartan acá en vez de mostrarse como "cargada sin match".
+  const cargadosSinMatch = restanteCargado.filter((f) => f.montoTotal != null && f.montoTotal !== 0);
+
+  return { faltantes: restanteAfip, identificadasPorMontoYFecha, cargadosSinMatch };
 }
