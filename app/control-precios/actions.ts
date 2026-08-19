@@ -456,7 +456,7 @@ async function procesarComprobanteInterno(
   return { factura: conPro, modelo: "pro" };
 }
 
-type ResultadoProveedor = {
+export type ResultadoProveedor = {
   id: number;
   // Nombre del proveedor YA existente con el que este choca en nombre pero no en
   // CUIT — se devuelve para que confirmarFactura() pueda avisar en vez de dejar
@@ -482,7 +482,7 @@ type ResultadoProveedor = {
  *    parecido) — se crea aparte, pero se avisa en el resultado para que se
  *    revise a mano en vez de quedar un duplicado invisible.
  */
-async function buscarOCrearProveedor(datos: {
+export async function buscarOCrearProveedor(datos: {
   nombre: string;
   cuit: string | null;
   categoria: CategoriaInsumo;
