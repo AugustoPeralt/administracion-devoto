@@ -34,6 +34,15 @@ export function CotejoAfipForm({ locales }: { locales: { id: number; nombre: str
   const [archivo, setArchivo] = useState<File | null>(null);
   const [cargando, setCargando] = useState(false);
   const [respuesta, setRespuesta] = useState<RespuestaCotejoAfip | null>(null);
+  // Fuerza un remount completo de <ResultadoView> en cada cotejo nuevo — sin
+  // esto, si se sube un segundo excel (otro restaurante u otro período) sin
+  // recargar la página, React reutiliza la misma instancia del componente y su
+  // estado interno (filas, exclusiones marcadas en esta sesión, expandidos)
+  // queda pegado al resultado ANTERIOR: la cabecera muestra el restaurante
+  // nuevo pero las filas de abajo siguen siendo las del cotejo previo. Bug real
+  // reportado 2026-08-19 (facturas de otro restaurante/corrida apareciendo
+  // "de la nada" al cotejar de nuevo sin recargar).
+  const [resultadoKey, setResultadoKey] = useState(0);
 
   const nombreLocal = locales.find((l) => l.id === localId)?.nombre ?? "";
 
@@ -50,6 +59,7 @@ export function CotejoAfipForm({ locales }: { locales: { id: number; nombre: str
       if (periodo) formData.set("periodo", periodo);
       const res = await cotejarAfip(formData);
       setRespuesta(res);
+      setResultadoKey((k) => k + 1);
     } catch (err) {
       setRespuesta({ ok: false, error: err instanceof Error ? err.message : "Error inesperado." });
     } finally {
@@ -110,7 +120,7 @@ export function CotejoAfipForm({ locales }: { locales: { id: number; nombre: str
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{respuesta.error}</div>
       )}
 
-      {respuesta?.ok && <ResultadoView resultadoInicial={respuesta.resultado} />}
+      {respuesta?.ok && <ResultadoView key={resultadoKey} resultadoInicial={respuesta.resultado} />}
     </div>
   );
 }
