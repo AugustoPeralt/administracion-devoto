@@ -18,6 +18,7 @@
     "sharepoint:sync": "tsx scripts/sync-sharepoint.ts",
     "graph:login": "tsx scripts/graph-login.ts",
     "control-precios:probar-delta": "tsx scripts/probar-delta-precios.ts",
+    "control-precios:cotejar-afip": "tsx scripts/cotejar-facturas-afip.ts",
     "rrhh:listar": "tsx scripts/sync-rrhh.ts --listar",
     "rrhh:sync": "tsx scripts/sync-rrhh.ts",
     "rrhh:sync:dry": "tsx scripts/sync-rrhh.ts --dry-run"

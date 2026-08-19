@@ -33,6 +33,7 @@ const MODULOS: Record<string, ModuloNav> = {
       { href: "/control-precios/carga", label: "Cargar comprobante" },
       { href: "/control-precios/comparacion", label: "Comparar proveedores" },
       { href: "/control-precios/reportes", label: "Reporte de precios" },
+      { href: "/control-precios/cotejo-afip", label: "Cotejo contra AFIP" },
       { href: "/control-precios/proveedores", label: "Calidad de datos" },
     ],
   },
