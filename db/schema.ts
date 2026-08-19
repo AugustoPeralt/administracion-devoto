@@ -891,3 +891,28 @@ export const cpDuplicadosDescartados = pgTable(
   },
   (t) => [uniqueIndex("cp_duplicados_descartados_tipo_ids_idx").on(t.tipo, t.ids)]
 );
+
+export const cpAfipMotivoExclusionEnum = pgEnum("cp_afip_motivo_exclusion", ["ALQUILER", "SERVICIO", "OTRO"]);
+
+/**
+ * CUITs que aparecen en "Mis Comprobantes Recibidos" de AFIP (ver
+ * lib/control-precios/cotejo-afip.ts) pero que NUNCA son facturas de productos
+ * de un proveedor — son alquileres, servicios (seguridad, software, telefonía,
+ * comisiones de MercadoPago/apps de delivery, etc.) o pagos a personas físicas
+ * que no tiene sentido pedirle a un encargado de restaurante. Global por CUIT
+ * (no por local): decisión del usuario (2026-08-19) — un mismo CUIT de alquiler
+ * o servicio no pasa a ser proveedor de productos en otro restaurante. El
+ * cotejo filtra estos CUITs antes de calcular faltantes/métricas — ver
+ * cotejarComprobantesAfip().
+ */
+export const cpAfipExclusiones = pgTable(
+  "cp_afip_exclusiones",
+  {
+    id: serial("id").primaryKey(),
+    cuit: text("cuit").notNull(),
+    nombre: text("nombre").notNull(),
+    motivo: cpAfipMotivoExclusionEnum("motivo").notNull(),
+    creadoEn: timestamp("creado_en", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cp_afip_exclusiones_cuit_idx").on(t.cuit)]
+);

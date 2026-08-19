@@ -16,8 +16,10 @@
 
 import ExcelJS from "exceljs";
 import { db } from "@/db";
-import { cpFacturas, cpProveedores, alqLocales } from "@/db/schema";
+import { cpFacturas, cpProveedores, alqLocales, cpAfipExclusiones } from "@/db/schema";
 import { and, eq, gte, lt } from "drizzle-orm";
+
+export type MotivoExclusionAfip = "ALQUILER" | "SERVICIO" | "OTRO";
 
 // Tolerancia de redondeo entre el importe total de AFIP y el monto_total cargado
 // (mismo orden de magnitud que TOLERANCIA_SUBTOTAL en control-precios, pero acá
@@ -184,6 +186,7 @@ export type ResultadoCotejo = {
   totalFueraDePeriodo: number;
   filas: FilaCotejo[];
   ajustes: { cuit: string; nombre: string; cantidad: number; montoTotal: number }[];
+  excluidos: { cuit: string; nombre: string; motivo: MotivoExclusionAfip; cantidad: number; montoTotal: number }[];
   proveedoresSinCuit: string[];
   totales: {
     proveedoresConDiferencia: number;
@@ -219,8 +222,17 @@ export async function cotejarComprobantesAfip(
   const { inicio, finExclusivo } = rangoDePeriodo(periodo);
 
   const enPeriodo = comprobantes.filter((c) => c.fecha >= inicio && c.fecha < finExclusivo);
-  const primarios = enPeriodo.filter((c) => !c.esAjuste);
-  const ajustesComprobantes = enPeriodo.filter((c) => c.esAjuste);
+
+  // CUITs marcados como "no es un proveedor de productos" (alquiler, servicio,
+  // plataforma de delivery, etc. — ver cpAfipExclusiones en db/schema.ts): se
+  // sacan del cotejo antes de calcular nada, para que ni cuenten en las
+  // métricas ni aparezcan como "faltan facturas".
+  const exclusiones = await obtenerExclusionesAfip();
+  const excluidosComprobantes = enPeriodo.filter((c) => exclusiones.has(c.cuitEmisor));
+  const sinExcluidos = enPeriodo.filter((c) => !exclusiones.has(c.cuitEmisor));
+
+  const primarios = sinExcluidos.filter((c) => !c.esAjuste);
+  const ajustesComprobantes = sinExcluidos.filter((c) => c.esAjuste);
 
   const afipPorCuit = agruparAfipPorCuit(primarios);
   const ajustesPorCuit = agruparAfipPorCuit(ajustesComprobantes);
@@ -305,6 +317,15 @@ export async function cotejarComprobantesAfip(
   const comprobantesFaltantes = filas.reduce((acc, f) => acc + f.faltantes.length, 0);
   const montoFaltante = filas.reduce((acc, f) => acc + f.faltantes.reduce((a, x) => a + x.importe, 0), 0);
 
+  const excluidosPorCuit = agruparAfipPorCuit(excluidosComprobantes);
+  const excluidos = [...excluidosPorCuit.entries()].map(([cuit, a]) => ({
+    cuit,
+    nombre: a.denominacion,
+    motivo: exclusiones.get(cuit) ?? "OTRO",
+    cantidad: a.comprobantes.length,
+    montoTotal: a.comprobantes.reduce((acc, c) => acc + c.importeTotal, 0),
+  }));
+
   return {
     local,
     periodo,
@@ -318,6 +339,7 @@ export async function cotejarComprobantesAfip(
       cantidad: a.comprobantes.length,
       montoTotal: a.comprobantes.reduce((acc, c) => acc + c.importeTotal, 0),
     })),
+    excluidos,
     proveedoresSinCuit: [...proveedoresSinCuit],
     totales: {
       proveedoresConDiferencia,
@@ -326,6 +348,13 @@ export async function cotejarComprobantesAfip(
       montoFaltante,
     },
   };
+}
+
+/** CUITs marcados como "no es un proveedor de productos" — ver cpAfipExclusiones
+ * en db/schema.ts. Global (no por restaurante): decisión del usuario (2026-08-19). */
+export async function obtenerExclusionesAfip(): Promise<Map<string, MotivoExclusionAfip>> {
+  const filas = await db.select({ cuit: cpAfipExclusiones.cuit, motivo: cpAfipExclusiones.motivo }).from(cpAfipExclusiones);
+  return new Map(filas.map((f) => [f.cuit, f.motivo as MotivoExclusionAfip]));
 }
 
 function agruparAfipPorCuit(comprobantes: ComprobanteAfip[]) {

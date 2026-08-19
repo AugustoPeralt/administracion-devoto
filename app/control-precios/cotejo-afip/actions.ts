@@ -1,10 +1,14 @@
 "use server";
 
 import { auth } from "@/auth";
+import { db } from "@/db";
+import { cpAfipExclusiones } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   cotejarComprobantesAfip,
   ErrorParseoAfip,
   parsearExcelAfip,
+  type MotivoExclusionAfip,
   type ResultadoCotejo,
 } from "@/lib/control-precios/cotejo-afip";
 
@@ -43,4 +47,23 @@ export async function cotejarAfip(formData: FormData): Promise<RespuestaCotejoAf
     if (err instanceof ErrorParseoAfip) return { ok: false, error: err.message };
     return { ok: false, error: err instanceof Error ? err.message : "No se pudo procesar el excel." };
   }
+}
+
+/** Marca un CUIT como "no es un proveedor de productos" (alquiler, servicio,
+ * plataforma de delivery, etc.) — global, no por restaurante (ver comentario en
+ * cpAfipExclusiones, db/schema.ts). A partir de acá el cotejo lo saca solo en
+ * cualquier restaurante/período. */
+export async function excluirProveedorAfip(cuit: string, nombre: string, motivo: MotivoExclusionAfip) {
+  await requerirSesion();
+  await db
+    .insert(cpAfipExclusiones)
+    .values({ cuit, nombre, motivo })
+    .onConflictDoUpdate({ target: cpAfipExclusiones.cuit, set: { nombre, motivo } });
+}
+
+/** Deshace una exclusión (por si se marcó por error) — vuelve a aparecer en el
+ * próximo cotejo si sigue habiendo diferencia real. */
+export async function quitarExclusionAfip(cuit: string) {
+  await requerirSesion();
+  await db.delete(cpAfipExclusiones).where(eq(cpAfipExclusiones.cuit, cuit));
 }

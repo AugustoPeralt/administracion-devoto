@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { cotejarAfip, type RespuestaCotejoAfip } from "@/app/control-precios/cotejo-afip/actions";
+import { useMemo, useState, type FormEvent } from "react";
+import { cotejarAfip, excluirProveedorAfip, quitarExclusionAfip, type RespuestaCotejoAfip } from "@/app/control-precios/cotejo-afip/actions";
 import { construirReporteFaltantes } from "@/lib/control-precios/reporte-cotejo-afip";
-import type { EstadoCotejo, FilaCotejo, ResultadoCotejo } from "@/lib/control-precios/cotejo-afip";
+import type { EstadoCotejo, FilaCotejo, MotivoExclusionAfip, ResultadoCotejo } from "@/lib/control-precios/cotejo-afip";
 
 const ESTADO_CONFIG: Record<EstadoCotejo, { texto: string; clase: string }> = {
   FALTAN_FACTURAS: { texto: "Faltan facturas", clase: "bg-rose-50 text-rose-700" },
@@ -11,8 +11,21 @@ const ESTADO_CONFIG: Record<EstadoCotejo, { texto: string; clase: string }> = {
   OK: { texto: "Coincide", clase: "bg-emerald-50 text-emerald-700" },
 };
 
+const MOTIVO_LABEL: Record<MotivoExclusionAfip, string> = {
+  ALQUILER: "Alquiler",
+  SERVICIO: "Servicio",
+  OTRO: "Otro",
+};
+
 function formatoPlata(n: number): string {
   return n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+}
+
+function calcularTotales(filas: FilaCotejo[]) {
+  const proveedoresConDiferencia = filas.filter((f) => f.estado !== "OK").length;
+  const comprobantesFaltantes = filas.reduce((acc, f) => acc + f.faltantes.length, 0);
+  const montoFaltante = filas.reduce((acc, f) => acc + f.faltantes.reduce((a, x) => a + x.importe, 0), 0);
+  return { proveedoresConDiferencia, proveedoresOk: filas.length - proveedoresConDiferencia, comprobantesFaltantes, montoFaltante };
 }
 
 export function CotejoAfipForm({ locales }: { locales: { id: number; nombre: string }[] }) {
@@ -97,13 +110,20 @@ export function CotejoAfipForm({ locales }: { locales: { id: number; nombre: str
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{respuesta.error}</div>
       )}
 
-      {respuesta?.ok && <ResultadoView resultado={respuesta.resultado} />}
+      {respuesta?.ok && <ResultadoView resultadoInicial={respuesta.resultado} />}
     </div>
   );
 }
 
-function ResultadoView({ resultado }: { resultado: ResultadoCotejo }) {
+type ExcluidoSesion = { cuit: string; nombre: string; motivo: MotivoExclusionAfip; fila: FilaCotejo };
+
+function ResultadoView({ resultadoInicial }: { resultadoInicial: ResultadoCotejo }) {
+  const [filas, setFilas] = useState<FilaCotejo[]>(resultadoInicial.filas);
+  const [excluidosSesion, setExcluidosSesion] = useState<ExcluidoSesion[]>([]);
   const [expandido, setExpandido] = useState<Set<string>>(new Set());
+
+  const totales = useMemo(() => calcularTotales(filas), [filas]);
+  const resultadoVista = useMemo(() => ({ ...resultadoInicial, filas, totales }), [resultadoInicial, filas, totales]);
 
   function toggle(cuit: string) {
     setExpandido((prev) => {
@@ -114,49 +134,93 @@ function ResultadoView({ resultado }: { resultado: ResultadoCotejo }) {
     });
   }
 
+  async function excluir(fila: FilaCotejo, motivo: MotivoExclusionAfip) {
+    setFilas((prev) => prev.filter((f) => f.cuit !== fila.cuit));
+    setExcluidosSesion((prev) => [...prev, { cuit: fila.cuit, nombre: fila.nombre, motivo, fila }]);
+    await excluirProveedorAfip(fila.cuit, fila.nombre, motivo);
+  }
+
+  async function deshacerExclusion(cuit: string) {
+    const item = excluidosSesion.find((e) => e.cuit === cuit);
+    if (!item) return;
+    setExcluidosSesion((prev) => prev.filter((e) => e.cuit !== cuit));
+    setFilas((prev) => [...prev, item.fila]);
+    await quitarExclusionAfip(cuit);
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
         <p>
-          <strong className="text-slate-900">{resultado.local.nombre}</strong> — período{" "}
-          <strong className="text-slate-900">{resultado.periodo}</strong> — CUIT receptor en el excel:{" "}
-          <strong className="text-slate-900">{resultado.cuitReceptorExcel}</strong>
+          <strong className="text-slate-900">{resultadoInicial.local.nombre}</strong> — período{" "}
+          <strong className="text-slate-900">{resultadoInicial.periodo}</strong> — CUIT receptor en el excel:{" "}
+          <strong className="text-slate-900">{resultadoInicial.cuitReceptorExcel}</strong>
         </p>
         <p className="mt-1 text-xs text-slate-400">
-          {resultado.totalComprobantesExcel} comprobante(s) en el excel
-          {resultado.totalFueraDePeriodo > 0 && ` (${resultado.totalFueraDePeriodo} fuera del período, ignorados)`}
+          {resultadoInicial.totalComprobantesExcel} comprobante(s) en el excel
+          {resultadoInicial.totalFueraDePeriodo > 0 && ` (${resultadoInicial.totalFueraDePeriodo} fuera del período, ignorados)`}
         </p>
       </div>
 
-      {resultado.totales.comprobantesFaltantes > 0 && <ReporteFaltantesCopiable resultado={resultado} />}
+      {totales.comprobantesFaltantes > 0 && <ReporteFaltantesCopiable resultado={resultadoVista} />}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Metrica etiqueta="Proveedores con diferencia" valor={String(resultado.totales.proveedoresConDiferencia)} tono="rose" />
-        <Metrica etiqueta="Proveedores OK" valor={String(resultado.totales.proveedoresOk)} tono="emerald" />
-        <Metrica etiqueta="Facturas faltantes" valor={String(resultado.totales.comprobantesFaltantes)} tono="rose" />
-        <Metrica etiqueta="Monto faltante" valor={formatoPlata(resultado.totales.montoFaltante)} tono="rose" />
+        <Metrica etiqueta="Proveedores con diferencia" valor={String(totales.proveedoresConDiferencia)} tono="rose" />
+        <Metrica etiqueta="Proveedores OK" valor={String(totales.proveedoresOk)} tono="emerald" />
+        <Metrica etiqueta="Facturas faltantes" valor={String(totales.comprobantesFaltantes)} tono="rose" />
+        <Metrica etiqueta="Monto faltante" valor={formatoPlata(totales.montoFaltante)} tono="rose" />
       </div>
 
-      {resultado.proveedoresSinCuit.length > 0 && (
+      {resultadoInicial.proveedoresSinCuit.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-          {resultado.proveedoresSinCuit.length} proveedor(es) de este local no tienen CUIT cargado — nunca se van a
-          poder cruzar automáticamente hasta completarles el CUIT en /control-precios/proveedores:{" "}
-          {resultado.proveedoresSinCuit.join(", ")}
+          {resultadoInicial.proveedoresSinCuit.length} proveedor(es) de este local no tienen CUIT cargado — nunca se
+          van a poder cruzar automáticamente hasta completarles el CUIT en /control-precios/proveedores:{" "}
+          {resultadoInicial.proveedoresSinCuit.join(", ")}
         </div>
       )}
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        {resultado.filas.map((fila) => (
-          <FilaProveedor key={fila.cuit} fila={fila} expandido={expandido.has(fila.cuit)} onToggle={() => toggle(fila.cuit)} />
+        {filas.map((fila) => (
+          <FilaProveedor
+            key={fila.cuit}
+            fila={fila}
+            expandido={expandido.has(fila.cuit)}
+            onToggle={() => toggle(fila.cuit)}
+            onExcluir={(motivo) => void excluir(fila, motivo)}
+          />
         ))}
       </div>
 
-      {resultado.ajustes.length > 0 && (
+      {(excluidosSesion.length > 0 || resultadoInicial.excluidos.length > 0) && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm font-medium text-slate-700">No son proveedores de productos (excluidos del cotejo)</p>
+          <p className="mb-2 text-xs text-slate-400">Alquileres, servicios, plataformas de delivery, etc. — no se cuentan como faltantes.</p>
+          <ul className="space-y-1 text-sm text-slate-600">
+            {excluidosSesion.map((e) => (
+              <li key={e.cuit} className="flex items-center gap-2">
+                <span className="flex-1">
+                  {e.nombre} (CUIT {e.cuit}) — {MOTIVO_LABEL[e.motivo]}
+                </span>
+                <button type="button" onClick={() => void deshacerExclusion(e.cuit)} className="text-xs text-slate-400 underline hover:text-slate-700">
+                  deshacer
+                </button>
+              </li>
+            ))}
+            {resultadoInicial.excluidos.map((e) => (
+              <li key={e.cuit} className="text-slate-500">
+                {e.nombre} (CUIT {e.cuit}) — {MOTIVO_LABEL[e.motivo]} — {e.cantidad} comprobante(s) ya excluidos previamente
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {resultadoInicial.ajustes.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-medium text-slate-700">Notas de Crédito/Débito en AFIP (informativo)</p>
           <p className="mb-2 text-xs text-slate-400">No se cruzan contra las facturas cargadas.</p>
           <ul className="space-y-1 text-sm text-slate-600">
-            {resultado.ajustes.map((a) => (
+            {resultadoInicial.ajustes.map((a) => (
               <li key={a.cuit}>
                 {a.nombre} (CUIT {a.cuit}): {a.cantidad} nota(s), {formatoPlata(a.montoTotal)}
               </li>
@@ -178,28 +242,54 @@ function Metrica({ etiqueta, valor, tono }: { etiqueta: string; valor: string; t
   );
 }
 
-function FilaProveedor({ fila, expandido, onToggle }: { fila: FilaCotejo; expandido: boolean; onToggle: () => void }) {
+function FilaProveedor({
+  fila,
+  expandido,
+  onToggle,
+  onExcluir,
+}: {
+  fila: FilaCotejo;
+  expandido: boolean;
+  onToggle: () => void;
+  onExcluir: (motivo: MotivoExclusionAfip) => void;
+}) {
   const { texto, clase } = ESTADO_CONFIG[fila.estado];
   const tieneDetalle = fila.faltantes.length > 0 || fila.identificadasPorMontoYFecha.length > 0 || fila.cargadasSinMatch.length > 0;
 
   return (
     <div className="border-b border-slate-100 last:border-b-0">
-      <button
-        type="button"
-        onClick={tieneDetalle ? onToggle : undefined}
-        className={`flex w-full flex-wrap items-center gap-3 px-4 py-2.5 text-left ${tieneDetalle ? "cursor-pointer hover:bg-slate-50" : ""}`}
-      >
-        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${clase}`}>{texto}</span>
-        <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{fila.nombre}</span>
-        <span className="text-xs text-slate-400">CUIT {fila.cuit}</span>
-        <span className="text-xs text-slate-600">
-          AFIP {fila.cantAfip} / Cargado {fila.cantCargada}
-        </span>
-        <span className="text-xs text-slate-600">
-          {formatoPlata(fila.montoAfip)} / {formatoPlata(fila.montoCargado)}
-        </span>
-        {tieneDetalle && <span className="text-xs text-slate-400">{expandido ? "▲" : "▼"}</span>}
-      </button>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={tieneDetalle ? onToggle : undefined}
+          className={`flex min-w-0 flex-1 flex-wrap items-center gap-3 text-left ${tieneDetalle ? "cursor-pointer" : ""}`}
+        >
+          <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${clase}`}>{texto}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{fila.nombre}</span>
+          <span className="text-xs text-slate-400">CUIT {fila.cuit}</span>
+          <span className="text-xs text-slate-600">
+            AFIP {fila.cantAfip} / Cargado {fila.cantCargada}
+          </span>
+          <span className="text-xs text-slate-600">
+            {formatoPlata(fila.montoAfip)} / {formatoPlata(fila.montoCargado)}
+          </span>
+          {tieneDetalle && <span className="text-xs text-slate-400">{expandido ? "▲" : "▼"}</span>}
+        </button>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="text-xs text-slate-400">No es proveedor de productos:</span>
+          {(Object.keys(MOTIVO_LABEL) as MotivoExclusionAfip[]).map((motivo) => (
+            <button
+              key={motivo}
+              type="button"
+              onClick={() => onExcluir(motivo)}
+              className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-800"
+            >
+              {MOTIVO_LABEL[motivo]}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {expandido && (
         <div className="space-y-3 border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm">
