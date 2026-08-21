@@ -13,12 +13,13 @@ function limpiarTexto(valor: unknown): string {
   return (valor ?? "").toString().trim();
 }
 
-/** "4,532.00" o "4078.8" -> 4532 / 4078.8. Las listas de proveedores vienen con
- * la coma de miles a veces sí, a veces no (ver LISTA 23-7.xlsx: la columna
- * "Precio" siempre la tiene, "precio c/bonif" no) — sacarla siempre es seguro
- * porque ningún precio de estos catálogos usa coma como separador decimal. */
+/** "$ 4,532.00 " o "4078.8" -> 4532 / 4078.8. Las listas de proveedores vienen
+ * con la coma de miles a veces sí, a veces no, y algunas (ver El Emporio desde
+ * 2026-08) traen el símbolo "$" y espacios propios del formato moneda de Excel
+ * — sacar todo lo que no sea dígito, punto o signo es seguro porque ningún
+ * precio de estos catálogos usa coma como separador decimal. */
 function parsearPrecio(valor: unknown): number {
-  const texto = limpiarTexto(valor).replace(/,/g, "");
+  const texto = limpiarTexto(valor).replace(/[^0-9.-]/g, "");
   return texto ? Number(texto) : NaN;
 }
 
@@ -30,10 +31,13 @@ function leerFilas(buffer: Buffer): unknown[][] {
 
 /**
  * El Emporio de Lanús S.A. — lista plana, sin secciones: fila 0 es encabezado
- * ("Cód. artículo", "Descripción", "Desc. Adicional", "Precio", "precio
- * c/bonif"), el resto son productos. "precio c/bonif" es el precio final
- * negociado (confirmado por el usuario) — se usa directo para comparar, sin
- * ningún ajuste adicional.
+ * ("Articulo", "Titulo", "Desacripcion", "Unidades", "Precio", "Precio con
+ * bonificacion", "% IVA"), el resto son productos. Desde 2026-08 el archivo
+ * agregó las columnas "Unidades" y "% IVA" (que no se usan acá — no hay
+ * columna equivalente en cp_listas_precios_proveedor) y los precios vienen con
+ * el símbolo "$"; antes de esa fecha no traía ninguna de las dos. "Precio con
+ * bonificacion" es el precio final negociado (confirmado por el usuario) — se
+ * usa directo para comparar, sin ningún ajuste adicional.
  */
 export function parsearListaElEmporio(buffer: Buffer): FilaListaPrecio[] {
   const filas = leerFilas(buffer);
@@ -45,10 +49,10 @@ export function parsearListaElEmporio(buffer: Buffer): FilaListaPrecio[] {
     const descripcion = limpiarTexto(fila[1]);
     if (!codigoProveedor || !descripcion) continue;
 
-    const precioLista = parsearPrecio(fila[3]);
+    const precioLista = parsearPrecio(fila[4]);
     if (!Number.isFinite(precioLista)) continue;
 
-    const precioConBonificacion = parsearPrecio(fila[4]);
+    const precioConBonificacion = parsearPrecio(fila[5]);
     resultado.push({
       codigoProveedor,
       descripcion,
