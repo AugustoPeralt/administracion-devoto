@@ -39,7 +39,8 @@ function elegirNombrePrincipal(nombres: string[]): string {
 // Ya" categoria DESCARTABLES).
 function inferirCategoria(cuentas: string): CategoriaInsumo {
   const c = cuentas.toLowerCase();
-  if (/carnes/.test(c)) return "CARNE";
+  if (/pescad|frutos de mar/.test(c)) return "PESCADERIA";
+  if (/carnes|avicol|avicultura/.test(c)) return "CARNE";
   if (/verduler|frutas/.test(c)) return "VERDULERIA";
   if (/bebidas/.test(c)) return "BEBIBLES";
   if (/descart|servill|packaging|individuales|bolsas|limpieza|sorbetes/.test(c)) return "DESCARTABLES";

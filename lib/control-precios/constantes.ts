@@ -1,7 +1,7 @@
 // Único lugar donde vive este array — actions.ts es "use server" y solo puede
 // exportar funciones async, no esta constante, así que cualquier componente
 // cliente que la necesite (selects, filtros) la importa de acá.
-export const CATEGORIAS_INSUMO = ["CARNE", "ALMACEN", "VERDULERIA", "BEBIBLES", "DESCARTABLES"] as const;
+export const CATEGORIAS_INSUMO = ["CARNE", "PESCADERIA", "ALMACEN", "VERDULERIA", "BEBIBLES", "DESCARTABLES"] as const;
 
 // A partir de este % de aumento, una fila se resalta como alerta fuerte — usado
 // tanto en la pantalla de Reportes como en el export a Excel, para que se vea

@@ -123,8 +123,9 @@ Reglas:
   lleva "monto_total" con ese valor. Poner un monto inventado en una página
   que no es la última hace que el total de esa factura se cuente dos veces
   cuando alguien sume ambas páginas.
-- Sugerí "categoria_sugerida" según el rubro del proveedor: CARNE, ALMACEN,
-  VERDULERIA, BEBIBLES o DESCARTABLES.
+- Sugerí "categoria_sugerida" según el rubro del proveedor: CARNE, PESCADERIA,
+  ALMACEN, VERDULERIA, BEBIBLES o DESCARTABLES. PESCADERIA es pescado y frutos
+  de mar — no lo confundas con CARNE (vacuna/aviar).
 - Si el comprobante imprime a nombre de quién está hecha la compra (cliente,
   comprador, destinatario, razón social del "Señor(es)"), extraelo en
   "cliente_detectado". Muchos remitos informales no lo imprimen — en ese caso, null.

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."cp_categoria_insumo" ADD VALUE 'PESCADERIA' BEFORE 'ALMACEN';

@@ -4,7 +4,6 @@ import {
   obtenerGastoPorCategoria,
   obtenerGastoTotalPeriodo,
   obtenerHistorialComprasPorProducto,
-  obtenerTopMasCompradosCriolloEmporio,
   parseLocalIds,
   parseProveedorIds,
   precioRealAjustado,
@@ -13,7 +12,6 @@ import {
 } from "@/lib/control-precios/consultas";
 import { UMBRAL_ALERTA_PRECIO } from "@/lib/control-precios/constantes";
 import type { CategoriaInsumo } from "@/app/control-precios/actions";
-import { formatoFecha } from "@/lib/formato";
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 
@@ -22,10 +20,6 @@ const COLOR_ALERTA_LEVE = "FFFEF3C7"; // ámbar claro — aumento notorio pero p
 const COLOR_SIN_VERIFICAR = "FFFEF3C7"; // mismo ámbar — plata que no se pudo comprobar contra el papel
 const COLOR_ENCABEZADO = "FF0F172A"; // slate-950, igual que el resto de la UI
 const COLOR_TEXTO_ALERTA = "FFB91C1C"; // rojo-700, para que el % se lea aunque se imprima en blanco y negro
-const COLOR_TEXTO_CRIOLLO = "FF059669"; // emerald-600, mismo color que "Conviene: Criollo" en la pantalla
-const COLOR_TEXTO_EMPORIO = "FF0284C7"; // sky-600, mismo color que "Conviene: Emporio" en la pantalla
-const COLOR_FILA_MARCA_DISTINTA = "FFF1F5F9"; // slate-100 — gris parejo para toda la fila, para que se note de un vistazo sin tener que leer la columna
-const COLOR_ENCABEZADO_SECCION = "FFE2E8F0"; // slate-200 — separador de sección, más claro que el encabezado de la tabla
 const FORMATO_FECHA = "dd/mm/yyyy";
 const TOP_AUMENTOS_CANTIDAD = 10;
 
@@ -145,111 +139,6 @@ export async function GET(request: Request) {
     resumen.getColumn(6).width = 14;
     resumen.getColumn(7).width = 12;
   }
-
-  // Top 20 POR EMPRESA (restaurante) de los productos donde más plata se
-  // gastó históricamente en El Criollo + HORECA (combinados — son en los
-  // hechos el mismo distribuidor real, ver nota en obtenerParesCriolloEmporio)
-  // — cada empresa tiene su propio ranking de 20, filtrable por la columna
-  // "Empresa", para no tapar a los restaurantes chicos detrás de los 2-3 que
-  // más compran (ver obtenerTopMasCompradosCriolloEmporio). Contra TODOS los
-  // productos de El Emporio marcados como posible competencia — sin importar
-  // si tienen nombre/marca distinta, a diferencia de la comparación por
-  // catálogo de obtenerComparacionCriolloEmporio(). Acá el precio de El
-  // Criollo/HORECA es el REAL de la última factura de esa empresa (no el de
-  // lista): son los productos de mayor consumo, así que la última factura es
-  // representativa de hoy. Decisión del usuario (2026-07-30, ampliado a
-  // por-empresa el 2026-07-31).
-  const top20 = workbook.addWorksheet("Top 20 por empresa");
-  top20.columns = [
-    { header: "#", key: "ranking", width: 4 },
-    { header: "Empresa", key: "empresa", width: 20 },
-    { header: "Producto (El Criollo / HORECA)", key: "productoCriollo", width: 40 },
-    { header: "Comprado a", key: "compradoA", width: 12 },
-    { header: "Gasto histórico", key: "gastoTotal", width: 16 },
-    { header: "Cantidad comprada", key: "cantidadTotal", width: 16 },
-    { header: "Precio actual", key: "precioCriollo", width: 14 },
-    { header: "Última compra", key: "fechaCriollo", width: 14 },
-    { header: "Candidato (El Emporio)", key: "productoEmporio", width: 40 },
-    { header: "Precio Emporio", key: "precioEmporio", width: 15 },
-    { header: "Origen Emporio", key: "origenEmporio", width: 22 },
-    { header: "Coincidencia", key: "coincidencia", width: 16 },
-    { header: "Conviene", key: "conviene", width: 14 },
-    { header: "% Diferencia", key: "diferencia", width: 12 },
-  ];
-  top20.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-  top20.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_ENCABEZADO } };
-  top20.views = [{ state: "frozen", ySplit: 1 }];
-  top20.autoFilter = { from: "A1", to: "N1" };
-  top20.getCell("A1").note = "Puesto 1-20 DENTRO de esa empresa — cada empresa tiene su propio ranking, no es una posición global.";
-  top20.getCell("E1").note =
-    "$ gastado histórico total en ese producto POR ESA EMPRESA (todas sus facturas cargadas), sumando El Criollo y HORECA — así se eligió el top 20 de cada una.";
-  top20.getCell("F1").note = "Cantidad total comprada históricamente por esa empresa (misma suma que el gasto), en la unidad de medida de la última compra.";
-  top20.getCell("G1").note =
-    "A diferencia de la otra comparación por catálogo, acá el precio de El Criollo/HORECA es el REAL de la última factura de ESA empresa (no el de lista) — al ser los productos que más se compran, la última factura es representativa de hoy, no un dato viejo aislado.";
-  top20.getCell("B1").note = "Filtrá por esta columna para ver el top 20 de una sola empresa/restaurante.";
-  top20.getCell("L1").note =
-    "Misma marca: mismo producto, mismo fabricante de los dos lados.\n" +
-    "Distinta marca: mismo producto real, pero cada proveedor lo trae de un fabricante distinto — fila sombreada en gris.";
-
-  const filasTop20 = await obtenerTopMasCompradosCriolloEmporio(20);
-
-  filasTop20.forEach((p) => {
-    if (p.candidatosEmporio.length === 0) {
-      const fila = top20.addRow({
-        ranking: p.ranking,
-        empresa: p.empresa,
-        productoCriollo: p.nombreCriollo,
-        compradoA: p.proveedorCompra,
-        gastoTotal: p.gastoTotal,
-        cantidadTotal: `${p.cantidadTotal} ${p.unidadMedida}`,
-        precioCriollo: p.precioCriolloActual,
-        fechaCriollo: comoFecha(p.fechaCompraCriollo),
-        productoEmporio: "(sin competencia identificada en El Emporio)",
-      });
-      fila.getCell("productoEmporio").font = { italic: true, color: { argb: "FF94A3B8" } };
-      fila.getCell("gastoTotal").numFmt = '"$"#,##0';
-      fila.getCell("precioCriollo").numFmt = '"$"#,##0';
-      fila.getCell("fechaCriollo").numFmt = FORMATO_FECHA;
-      return;
-    }
-
-    for (const c of p.candidatosEmporio) {
-      const fila = top20.addRow({
-        ranking: p.ranking,
-        empresa: p.empresa,
-        productoCriollo: p.nombreCriollo,
-        compradoA: p.proveedorCompra,
-        gastoTotal: p.gastoTotal,
-        cantidadTotal: `${p.cantidadTotal} ${p.unidadMedida}`,
-        precioCriollo: p.precioCriolloActual,
-        fechaCriollo: comoFecha(p.fechaCompraCriollo),
-        productoEmporio: c.nombreEmporio,
-        precioEmporio: c.precioEmporio,
-        origenEmporio: c.esEstimadoEmporio
-          ? "estimado (lista)"
-          : c.fechaEmporio
-            ? `real, ${formatoFecha(c.fechaEmporio)}`
-            : "real",
-        coincidencia: c.distintaMarca ? "Distinta marca" : "Misma marca",
-        conviene: c.masBarato === "igual" ? "igual" : c.masBarato === "criollo" ? "Criollo" : "Emporio",
-        diferencia: c.masBarato === "igual" ? 0 : c.porcentajeDiferencia / 100,
-      });
-      fila.getCell("gastoTotal").numFmt = '"$"#,##0';
-      fila.getCell("precioCriollo").numFmt = '"$"#,##0';
-      fila.getCell("fechaCriollo").numFmt = FORMATO_FECHA;
-      fila.getCell("precioEmporio").numFmt = '"$"#,##0';
-      fila.getCell("diferencia").numFmt = "0.00%";
-      if (c.distintaMarca) {
-        fila.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_FILA_MARCA_DISTINTA } };
-        fila.getCell("coincidencia").font = { italic: true, bold: true, color: { argb: "FF475569" } };
-      }
-      if (c.masBarato !== "igual") {
-        const color = c.masBarato === "criollo" ? COLOR_TEXTO_CRIOLLO : COLOR_TEXTO_EMPORIO;
-        fila.getCell("conviene").font = { bold: true, color: { argb: color } };
-        fila.getCell("diferencia").font = { bold: true, color: { argb: color } };
-      }
-    }
-  });
 
   const precios = workbook.addWorksheet("Precios");
   precios.columns = [
@@ -374,7 +263,7 @@ export async function GET(request: Request) {
   detalle.columns = [
     { header: "Proveedor", key: "proveedor", width: 26 },
     { header: "Producto", key: "producto", width: 34 },
-    { header: "Restaurante", key: "local", width: 18 },
+    { header: "Empresa", key: "local", width: 18 },
     { header: "Fecha", key: "fecha", width: 14 },
     { header: "Cantidad", key: "cantidad", width: 12 },
     { header: "Unidad", key: "unidad", width: 8 },

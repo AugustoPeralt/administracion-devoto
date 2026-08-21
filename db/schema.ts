@@ -470,6 +470,7 @@ export const alqSyncRuns = pgTable("alq_sync_runs", {
 
 export const cpCategoriaInsumoEnum = pgEnum("cp_categoria_insumo", [
   "CARNE",
+  "PESCADERIA",
   "ALMACEN",
   "VERDULERIA",
   "BEBIBLES",

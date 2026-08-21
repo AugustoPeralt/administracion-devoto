@@ -4,7 +4,7 @@ import { CATEGORIAS_INSUMO } from "./constantes";
 // reasignada por ranking) para el único gráfico con identidad real por color:
 // gasto por categoría de insumo. Cada categoría conserva siempre el mismo
 // color sin importar el filtro aplicado.
-const PALETA_CATEGORICA = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"] as const;
+const PALETA_CATEGORICA = ["#2a78d6", "#8c6bcf", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"] as const;
 
 export const COLOR_POR_CATEGORIA: Record<(typeof CATEGORIAS_INSUMO)[number], string> = Object.fromEntries(
   CATEGORIAS_INSUMO.map((categoria, i) => [categoria, PALETA_CATEGORICA[i]])
